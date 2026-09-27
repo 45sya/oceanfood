@@ -853,6 +853,7 @@ function renderWizard(){
   if(w.type === "return") return renderReturnWizard(w);
   if(w.type === "incoming") return renderIncomingWizard(w);
   if(w.type === "incomingView") return renderIncomingViewPrint(w.inc);
+  if(w.type === "returnView") return renderReturnViewPrint(w.ret);
   return "";
 }
 
@@ -1036,9 +1037,11 @@ function bindWizardEvents(){
         b.onclick = ()=>{ w.merchant = b.dataset.merchant; renderCurrentView(); };
       });
       const qa = document.getElementById("quickAddMerchantBtn");
-      if(qa) qa.onclick = ()=>quickAddModal("تاجر", async(name)=>{
-        await state.db.collection("merchants").add({name, createdAt:Date.now()});
+      if(qa) qa.onclick = ()=>quickAddMerchantModal(async(name, branch)=>{
+        await state.db.collection("merchants").add({name, branch, createdAt:Date.now()});
+        logActivity("إضافة تاجر", `${name} - ${branch}`);
         toast("تمت إضافة التاجر");
+        w.merchant = branch ? `${name} - ${branch}` : name;
       });
     }
     if(w.step===3){
@@ -1075,6 +1078,13 @@ function bindWizardEvents(){
     const backBtn2 = document.getElementById("backIncomingViewBtn");
     if(backBtn2) backBtn2.onclick = closeWizard;
   }
+
+  if(w.type==="returnView"){
+    const pb = document.getElementById("printReturnBtn");
+    if(pb) pb.onclick = ()=>window.print();
+    const backBtn3 = document.getElementById("backReturnViewBtn");
+    if(backBtn3) backBtn3.onclick = closeWizard;
+  }
 }
 
 function renderIncomingViewPrint(inc){
@@ -1104,6 +1114,38 @@ function renderIncomingViewPrint(inc){
     </div>
     <div class="sticky-bottom no-print">
       <button class="btn btn-outline" style="width:100%;" id="printIncomingBtn">🖨️ طباعة</button>
+    </div>
+  `;
+}
+
+function renderReturnViewPrint(r){
+  return `
+    <div class="row-between no-print" style="margin-bottom:10px;">
+      <button class="btn btn-ghost btn-sm" id="backReturnViewBtn">‹ رجوع</button>
+      <div style="font-weight:700;">مراجعة المرتجع</div>
+      <div style="width:60px;"></div>
+    </div>
+    <div class="voucher-print" id="printArea">
+      <div class="vp-head">
+        <h2>${currentAppName()}</h2>
+        <div>إذن مرتجع رقم ${r.number}</div>
+        <div style="font-size:12px; color:#555;">${r.date||""}</div>
+      </div>
+      <div style="font-size:12.5px; margin-top:8px;">
+        <div><b>إذن الصرف الأصلي:</b> ${r.voucherNumber?`#${r.voucherNumber}`:"-"}</div>
+        <div><b>المندوب:</b> ${r.rep||""}</div>
+        <div><b>التاجر / الفرع:</b> ${r.merchant||""}</div>
+      </div>
+      <table>
+        <tr><th>الصنف</th><th>الكمية</th><th>السبب</th></tr>
+        <tr>
+          <td>${r.name||""}</td><td>${fmt(r.qty)}</td><td>${r.reason||"-"}</td>
+        </tr>
+      </table>
+      <div style="text-align:left; font-weight:800; margin-top:8px;">إجمالي الكمية المرتجعة: ${fmt(r.qty)}</div>
+    </div>
+    <div class="sticky-bottom no-print">
+      <button class="btn btn-outline" style="width:100%;" id="printReturnBtn">🖨️ طباعة</button>
     </div>
   `;
 }
@@ -1196,6 +1238,34 @@ function quickAddModal(kind, onSave){
     const name = document.getElementById("qaName").value.trim();
     if(!name){ toast("اكتب الاسم أولًا"); return; }
     await onSave(name);
+    closeModal();
+  };
+  document.getElementById("ovl").addEventListener("click", (e)=>{ if(e.target.id==="ovl") closeModal(); });
+}
+
+function quickAddMerchantModal(onSave){
+  const modalRoot = document.getElementById("modalRoot");
+  modalRoot.innerHTML = `
+    <div class="overlay" id="ovl">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div style="font-weight:700; font-size:15px; margin-bottom:10px;">إضافة تاجر جديد</div>
+        <div class="field"><label>اسم التاجر</label><input type="text" id="qaMerchantName" placeholder="مثال: متجر طلبات"></div>
+        <div class="field"><label>الفرع *</label><input type="text" id="qaMerchantBranch" placeholder="مثال: فرع الجيزة"></div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" id="qaMerchantCancel" style="flex:1;">إلغاء</button>
+          <button class="btn btn-primary" id="qaMerchantSave" style="flex:1;">حفظ</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById("qaMerchantCancel").onclick = closeModal;
+  document.getElementById("qaMerchantSave").onclick = async ()=>{
+    const name = document.getElementById("qaMerchantName").value.trim();
+    const branch = document.getElementById("qaMerchantBranch").value.trim();
+    if(!name){ toast("اكتب اسم التاجر"); return; }
+    if(!branch){ toast("خانة الفرع إجبارية"); return; }
+    await onSave(name, branch);
     closeModal();
   };
   document.getElementById("ovl").addEventListener("click", (e)=>{ if(e.target.id==="ovl") closeModal(); });
@@ -1942,7 +2012,9 @@ function renderReturnHistory(){
       <div class="title-line"><span>مرتجع ${r.number}</span><span class="sum">${fmt(r.qty)}</span></div>
       <div class="meta">${r.rep||""} · ${r.name} · ${r.date}</div>
       <div class="meta">${r.voucherNumber?`من إذن #${r.voucherNumber} · `:""}السبب: ${r.reason||"-"}</div>
+      <div class="meta">🏪 ${r.merchant||"-"}</div>
       <div class="btn-row" style="margin-top:8px;">
+        <button class="btn btn-ghost btn-sm" data-view-return="${r.id}">🖨️ مراجعة وطباعة</button>
         ${isAdmin() ? `<button class="btn btn-danger" data-del-return="${r.id}">حذف</button>` : ""}
       </div>
     </div>
@@ -2027,6 +2099,14 @@ function bindHistoryEvents(){
       renderCurrentView();
     };
   });
+  document.querySelectorAll("[data-view-return]").forEach(b=>{
+    b.onclick = ()=>{
+      const r = state.returns.find(rr=>rr.id===b.dataset.viewReturn);
+      if(!r) return;
+      state.wizard = {type:"returnView", ret:r};
+      renderCurrentView();
+    };
+  });
 }
 
 /* ============================================================
@@ -2067,30 +2147,38 @@ function renderReports(){
   const rangeLabel = reportsPeriod==="all" ? "كل الفترات" : `${range.start} → ${range.end}`;
 
   return `
-    <div class="chip-row" style="margin-bottom:8px;">${periodChips}</div>
+    <div class="chip-row no-print" style="margin-bottom:8px;">${periodChips}</div>
     ${reportsPeriod!=="all" ? `
-    <div class="row-between" style="margin-bottom:12px;">
+    <div class="row-between no-print" style="margin-bottom:12px;">
       <button class="btn btn-ghost btn-sm" id="periodPrevBtn">‹ السابق</button>
       <div class="muted" style="font-weight:700; font-size:12.5px;">${rangeLabel}</div>
       <button class="btn btn-ghost btn-sm" id="periodNextBtn">التالي ›</button>
     </div>
-    ${reportsAnchor!==todayStr() ? `<button class="btn btn-outline btn-sm" id="periodTodayBtn" style="width:100%; margin-bottom:12px;">↺ الرجوع للفترة الحالية</button>` : ""}
+    ${reportsAnchor!==todayStr() ? `<button class="btn btn-outline btn-sm no-print" id="periodTodayBtn" style="width:100%; margin-bottom:12px;">↺ الرجوع للفترة الحالية</button>` : ""}
     ` : ""}
-    <div class="stat-grid">
-      <div class="stat-card"><div class="num">${fmt(totalSales)}</div><div class="lbl">إجمالي المبيعات</div></div>
-      <div class="stat-card"><div class="num">${fmt(totalDiscount)}</div><div class="lbl">إجمالي الخصومات</div></div>
-      <div class="stat-card"><div class="num">${fmt(totalQtyOut)}</div><div class="lbl">إجمالي الكميات المصروفة</div></div>
-      <div class="stat-card"><div class="num">${fmt(totalReturned)}</div><div class="lbl">إجمالي الكميات المرتجعة</div></div>
-      <div class="stat-card"><div class="num">${fmt(totalIncoming)}</div><div class="lbl">إجمالي الكميات الواردة</div></div>
+    <button class="btn btn-outline no-print" style="width:100%; margin-bottom:12px;" id="printReportBtn">🖨️ طباعة التقرير</button>
+    <div class="voucher-print" id="printArea">
+      <div class="vp-head">
+        <h2>${currentAppName()}</h2>
+        <div>تقرير الأداء</div>
+        <div style="font-size:12px; color:#555;">${rangeLabel}</div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="num">${fmt(totalSales)}</div><div class="lbl">إجمالي المبيعات</div></div>
+        <div class="stat-card"><div class="num">${fmt(totalDiscount)}</div><div class="lbl">إجمالي الخصومات</div></div>
+        <div class="stat-card"><div class="num">${fmt(totalQtyOut)}</div><div class="lbl">إجمالي الكميات المصروفة</div></div>
+        <div class="stat-card"><div class="num">${fmt(totalReturned)}</div><div class="lbl">إجمالي الكميات المرتجعة</div></div>
+        <div class="stat-card"><div class="num">${fmt(totalIncoming)}</div><div class="lbl">إجمالي الكميات الواردة</div></div>
+      </div>
+      <div class="section-title">🎯 أداء المناديب (للفترة المختارة)</div>
+      <div class="card">${repPerformanceList(vouchers, returns)}</div>
+      <div class="section-title">حسب المندوب</div>
+      <div class="card">${barList(byRep)}</div>
+      <div class="section-title">حسب التاجر</div>
+      <div class="card">${barList(byMerchant)}</div>
+      <div class="section-title">حسب الصنف (الأعلى مبيعًا)</div>
+      <div class="card">${barList(byProduct, 8)}</div>
     </div>
-    <div class="section-title">🎯 أداء المناديب (للفترة المختارة)</div>
-    <div class="card">${repPerformanceList(vouchers, returns)}</div>
-    <div class="section-title">حسب المندوب</div>
-    <div class="card">${barList(byRep)}</div>
-    <div class="section-title">حسب التاجر</div>
-    <div class="card">${barList(byMerchant)}</div>
-    <div class="section-title">حسب الصنف (الأعلى مبيعًا)</div>
-    <div class="card">${barList(byProduct, 8)}</div>
   `;
 }
 function repPerformanceList(vouchers, returns){
@@ -2142,6 +2230,8 @@ function bindReportsEvents(){
   if(prevBtn) prevBtn.onclick = ()=>{ reportsAnchor = shiftAnchor(reportsPeriod, reportsAnchor, -1); renderCurrentView(); };
   if(nextBtn) nextBtn.onclick = ()=>{ reportsAnchor = shiftAnchor(reportsPeriod, reportsAnchor, 1); renderCurrentView(); };
   if(todayBtn) todayBtn.onclick = ()=>{ reportsAnchor = todayStr(); renderCurrentView(); };
+  const printBtn = document.getElementById("printReportBtn");
+  if(printBtn) printBtn.onclick = ()=>window.print();
 }
 
 /* ============================================================
@@ -2347,7 +2437,7 @@ function addMerchantModal(){
         <div class="sheet-handle"></div>
         <div style="font-weight:700; font-size:15px; margin-bottom:10px;">إضافة تاجر جديد</div>
         <div class="field"><label>اسم التاجر</label><input type="text" id="mName" placeholder="مثال: متجر طلبات"></div>
-        <div class="field"><label>الفرع</label><input type="text" id="mBranch" placeholder="مثال: فرع الجيزة"></div>
+        <div class="field"><label>الفرع *</label><input type="text" id="mBranch" placeholder="مثال: فرع الجيزة"></div>
         <div class="btn-row">
           <button class="btn btn-ghost" id="mCancel" style="flex:1;">إلغاء</button>
           <button class="btn btn-primary" id="mSave" style="flex:1;">حفظ</button>
