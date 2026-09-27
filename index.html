@@ -262,6 +262,19 @@ const firebaseConfig = {
 /* ============================================================
    STATE
 ============================================================ */
+function loadSession(){
+  try{
+    const raw = localStorage.getItem("of_session");
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function saveSession(user){
+  try{ localStorage.setItem("of_session", JSON.stringify(user)); }catch(e){}
+}
+function clearSession(){
+  try{ localStorage.removeItem("of_session"); }catch(e){}
+}
+
 const state = {
   db: null,
   dbReady: false,
@@ -274,11 +287,32 @@ const state = {
   incoming: [],
   users: [],
   activity: [],
-  currentUser: null, // {username, role}
+  currentUser: loadSession(), // {username, role} - بيتحمل من الجلسة المحفوظة لحد ما نتأكد منه بعد تحميل المستخدمين
   loaded: {products:false, reps:false, merchants:false, vouchers:false, returns:false, incoming:false, users:false, activity:false, settings:false},
   tab: "home",
   wizard: null // active wizard state object, or null
 };
+
+function syncSessionWithUsers(){
+  if(!state.currentUser) return;
+  const match = state.users.find(u=>u.username===state.currentUser.username);
+  if(!match){
+    state.currentUser = null;
+    clearSession();
+    return;
+  }
+  if(match.role !== state.currentUser.role){
+    state.currentUser = {username: match.username, role: match.role};
+    saveSession(state.currentUser);
+  }
+}
+function updateHeaderGreeting(){
+  const subEl = document.querySelector("header.topbar .sub");
+  if(!subEl) return;
+  subEl.textContent = state.currentUser
+    ? `مرحبًا، ${state.currentUser.username} (${state.currentUser.role==="admin"?"أدمن":"مستخدم"})`
+    : "نظام إدارة المخزون والمبيعات";
+}
 
 const LOW_STOCK_THRESHOLD = 10;
 
@@ -358,7 +392,7 @@ function logoHtml(size){
 function applyBranding(){
   const url = currentLogoUrl();
   const logoSlot = document.getElementById("logoSlot");
-  if(logoSlot) logoSlot.innerHTML = logoHtml(32);
+  if(logoSlot) logoSlot.innerHTML = logoHtml(58);
   if(!url) return; // خلي أيقونة المتصفح الافتراضية زي ما هي لحد ما يتحط شعار
   const favEl = document.getElementById("faviconLink");
   const appleEl = document.getElementById("appleIconLink");
@@ -385,6 +419,47 @@ function todayStr(){
 }
 function uid(){
   return Math.random().toString(36).slice(2,9);
+}
+
+/* ============================================================
+   PERIOD HELPERS (للتقارير: يومي/أسبوعي/شهري/ربع سنوي/نصف سنوي/سنوي)
+============================================================ */
+function dateToStr(d){ return d.toISOString().slice(0,10); }
+function startOfWeekMon(d){
+  const date = new Date(d);
+  const day = date.getDay(); // 0=Sun..6=Sat
+  const diff = day===0 ? -6 : 1-day;
+  date.setDate(date.getDate()+diff);
+  return date;
+}
+const PERIOD_LABELS = {day:"يومي", week:"أسبوعي", month:"شهري", quarter:"ربع سنوي", half:"نصف سنوي", year:"سنوي", all:"كل الفترات"};
+function getPeriodRange(period, anchorStr){
+  if(period==="all") return {start:null, end:null};
+  const a = new Date(anchorStr+"T00:00:00");
+  let start, end;
+  if(period==="day"){ start=new Date(a); end=new Date(a); }
+  else if(period==="week"){ start=startOfWeekMon(a); end=new Date(start); end.setDate(end.getDate()+6); }
+  else if(period==="month"){ start=new Date(a.getFullYear(), a.getMonth(), 1); end=new Date(a.getFullYear(), a.getMonth()+1, 0); }
+  else if(period==="quarter"){ const q=Math.floor(a.getMonth()/3); start=new Date(a.getFullYear(), q*3, 1); end=new Date(a.getFullYear(), q*3+3, 0); }
+  else if(period==="half"){ const h=a.getMonth()<6?0:1; start=new Date(a.getFullYear(), h*6, 1); end=new Date(a.getFullYear(), h*6+6, 0); }
+  else if(period==="year"){ start=new Date(a.getFullYear(),0,1); end=new Date(a.getFullYear(),11,31); }
+  return {start: dateToStr(start), end: dateToStr(end)};
+}
+function shiftAnchor(period, anchorStr, dir){
+  const a = new Date(anchorStr+"T00:00:00");
+  if(period==="day") a.setDate(a.getDate()+dir);
+  else if(period==="week") a.setDate(a.getDate()+7*dir);
+  else if(period==="month") a.setMonth(a.getMonth()+dir);
+  else if(period==="quarter") a.setMonth(a.getMonth()+3*dir);
+  else if(period==="half") a.setMonth(a.getMonth()+6*dir);
+  else if(period==="year") a.setFullYear(a.getFullYear()+dir);
+  return dateToStr(a);
+}
+function inRange(dateStr, range){
+  if(!dateStr) return false;
+  if(range.start && dateStr<range.start) return false;
+  if(range.end && dateStr>range.end) return false;
+  return true;
 }
 
 /* ============================================================
@@ -474,8 +549,7 @@ async function tryLogin(username, password){
     const data = doc.data();
     if(data.password !== password){ toast("كلمة السر غير صحيحة"); return; }
     state.currentUser = {username: data.username, role: data.role};
-    const subEl = document.querySelector("header.topbar .sub");
-    if(subEl) subEl.textContent = `مرحبًا، ${data.username} (${data.role==="admin"?"أدمن":"مستخدم"})`;
+    saveSession(state.currentUser);
     logActivity("تسجيل دخول");
     renderCurrentView();
   }catch(e){
@@ -487,8 +561,7 @@ async function tryLogin(username, password){
 function logout(){
   logActivity("تسجيل خروج");
   state.currentUser = null;
-  const subEl = document.querySelector("header.topbar .sub");
-  if(subEl) subEl.textContent = "نظام إدارة المخزون والمبيعات";
+  clearSession();
   renderCurrentView();
 }
 
@@ -497,6 +570,7 @@ function subscribeCollection(key, colRef){
     snap=>{
       state[key] = snap.docs.filter(d=>d.exists).map(d=>({id:d.id, ...d.data()}));
       state.loaded[key] = true;
+      if(key==="users") syncSessionWithUsers();
       renderCurrentView();
     },
     err=>{
@@ -599,6 +673,7 @@ document.getElementById("statusBtn").addEventListener("click", ()=>{
 function renderCurrentView(){
   updateTabbarActive();
   applyBranding();
+  updateHeaderGreeting();
   const view = document.getElementById("view");
   const tabbarEl = document.getElementById("tabbar");
   if(state.dbAvailable === false){
@@ -628,7 +703,7 @@ function renderCurrentView(){
     case "inventory": view.innerHTML = renderInventory(); bindInventoryEvents(); break;
     case "incoming": view.innerHTML = renderIncoming(); bindIncomingEvents(); break;
     case "history": view.innerHTML = renderHistory(); bindHistoryEvents(); break;
-    case "reports": view.innerHTML = renderReports(); break;
+    case "reports": view.innerHTML = renderReports(); bindReportsEvents(); break;
     case "activity": view.innerHTML = renderActivity(); break;
     case "settings": view.innerHTML = renderSettings(); bindSettingsEvents(); break;
     default: view.innerHTML = renderHome(); bindHomeEvents();
@@ -639,7 +714,7 @@ function renderLogin(){
   return `
     <div class="login-wrap">
       <div class="login-card">
-        <div style="text-align:center; margin-bottom:2px;">${logoHtml(56)}</div>
+        <div style="text-align:center; margin-bottom:2px;">${logoHtml(120)}</div>
         <div style="text-align:center; font-weight:800; font-size:18px; margin-bottom:2px;">أوشين فود</div>
         <div class="muted" style="text-align:center; margin-bottom:18px;">سجّل الدخول للمتابعة</div>
         <div class="field"><label>اسم المستخدم</label><input type="text" id="loginUser" autocomplete="username"></div>
@@ -1582,6 +1657,8 @@ function productFormModal(existing){
    HISTORY TAB
 ============================================================ */
 let historySub = "vouchers";
+let voucherDateFrom = "";
+let voucherDateTo = "";
 function renderHistory(){
   return `
     <div class="btn-row" style="margin-bottom:12px;">
@@ -1592,9 +1669,21 @@ function renderHistory(){
   `;
 }
 function renderVoucherHistory(){
-  const list = [...state.vouchers].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-  if(!list.length) return `<div class="empty-state"><div class="ic">🧾</div>لا توجد أذون صرف بعد</div>`;
-  return list.map(v=>`
+  let list = [...state.vouchers].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  if(voucherDateFrom) list = list.filter(v=>v.date && v.date>=voucherDateFrom);
+  if(voucherDateTo) list = list.filter(v=>v.date && v.date<=voucherDateTo);
+  const filterBar = `
+    <div class="card" style="margin-bottom:10px;">
+      <div class="section-title" style="margin:0 0 8px;">🔎 بحث بالتاريخ</div>
+      <div class="btn-row" style="margin-bottom:8px;">
+        <div class="field" style="flex:1; margin-bottom:0;"><label>من تاريخ</label><input type="date" id="vDateFrom" value="${voucherDateFrom}"></div>
+        <div class="field" style="flex:1; margin-bottom:0;"><label>إلى تاريخ</label><input type="date" id="vDateTo" value="${voucherDateTo}"></div>
+      </div>
+      ${(voucherDateFrom||voucherDateTo) ? `<button class="btn btn-outline btn-sm" id="vDateClear" style="width:100%;">✖ مسح الفلتر</button>` : ""}
+    </div>
+  `;
+  if(!list.length) return filterBar + `<div class="empty-state"><div class="ic">🧾</div>لا توجد أذون صرف ${(voucherDateFrom||voucherDateTo)?"في الفترة دي":"بعد"}</div>`;
+  return filterBar + list.map(v=>`
     <div class="list-item">
       <div class="title-line"><span>إذن #${v.number}</span><span class="sum">${fmt(v.total)}</span></div>
       <div class="meta">${v.rep} → ${v.merchant} · ${v.date}</div>
@@ -1625,6 +1714,12 @@ function bindHistoryEvents(){
   const sr = document.getElementById("subReturns");
   if(sv) sv.onclick = ()=>{ historySub="vouchers"; renderCurrentView(); };
   if(sr) sr.onclick = ()=>{ historySub="returns"; renderCurrentView(); };
+  const vFrom = document.getElementById("vDateFrom");
+  const vTo = document.getElementById("vDateTo");
+  if(vFrom) vFrom.onchange = ()=>{ voucherDateFrom = vFrom.value; renderCurrentView(); };
+  if(vTo) vTo.onchange = ()=>{ voucherDateTo = vTo.value; renderCurrentView(); };
+  const vClear = document.getElementById("vDateClear");
+  if(vClear) vClear.onclick = ()=>{ voucherDateFrom=""; voucherDateTo=""; renderCurrentView(); };
   document.querySelectorAll("[data-del-voucher]").forEach(b=>{
     b.onclick = async ()=>{
       if(!isAdmin()){ toast("هذه العملية للأدمن فقط"); return; }
@@ -1658,28 +1753,50 @@ function bindHistoryEvents(){
 /* ============================================================
    REPORTS TAB
 ============================================================ */
+let reportsPeriod = "month";
+let reportsAnchor = todayStr();
+
 function renderReports(){
-  const totalSales = state.vouchers.reduce((s,v)=>s+(Number(v.total)||0),0);
+  const range = getPeriodRange(reportsPeriod, reportsAnchor);
+  const vouchers = reportsPeriod==="all" ? state.vouchers : state.vouchers.filter(v=>inRange(v.date, range));
+  const returns = reportsPeriod==="all" ? state.returns : state.returns.filter(r=>inRange(r.date, range));
+  const incoming = reportsPeriod==="all" ? state.incoming : state.incoming.filter(inc=>inRange(inc.date, range));
+
+  const totalSales = vouchers.reduce((s,v)=>s+(Number(v.total)||0),0);
   let totalDiscount = 0, totalQtyOut = 0;
-  for(const v of state.vouchers){
+  for(const v of vouchers){
     for(const it of (v.items||[])){
       totalDiscount += it.qty*it.price*it.discountPct;
       totalQtyOut += Number(it.qty)||0;
     }
   }
-  const totalReturned = state.returns.reduce((s,r)=>s+(Number(r.qty)||0),0);
-  const totalIncoming = state.incoming.reduce((s,inc)=>s+(Number(inc.totalQty)||0),0);
+  const totalReturned = returns.reduce((s,r)=>s+(Number(r.qty)||0),0);
+  const totalIncoming = incoming.reduce((s,inc)=>s+(Number(inc.totalQty)||0),0);
 
   const byRep = {};
-  for(const v of state.vouchers) byRep[v.rep] = (byRep[v.rep]||0) + (Number(v.total)||0);
+  for(const v of vouchers) byRep[v.rep] = (byRep[v.rep]||0) + (Number(v.total)||0);
   const byMerchant = {};
-  for(const v of state.vouchers) byMerchant[v.merchant] = (byMerchant[v.merchant]||0) + (Number(v.total)||0);
+  for(const v of vouchers) byMerchant[v.merchant] = (byMerchant[v.merchant]||0) + (Number(v.total)||0);
   const byProduct = {};
-  for(const v of state.vouchers) for(const it of (v.items||[])){
+  for(const v of vouchers) for(const it of (v.items||[])){
     byProduct[it.name] = (byProduct[it.name]||0) + it.qty*it.price*(1-it.discountPct);
   }
 
+  const periodChips = ["day","week","month","quarter","half","year","all"].map(p=>
+    `<button class="chip ${reportsPeriod===p?'selected':''}" data-period="${p}">${PERIOD_LABELS[p]}</button>`
+  ).join("");
+  const rangeLabel = reportsPeriod==="all" ? "كل الفترات" : `${range.start} → ${range.end}`;
+
   return `
+    <div class="chip-row" style="margin-bottom:8px;">${periodChips}</div>
+    ${reportsPeriod!=="all" ? `
+    <div class="row-between" style="margin-bottom:12px;">
+      <button class="btn btn-ghost btn-sm" id="periodPrevBtn">‹ السابق</button>
+      <div class="muted" style="font-weight:700; font-size:12.5px;">${rangeLabel}</div>
+      <button class="btn btn-ghost btn-sm" id="periodNextBtn">التالي ›</button>
+    </div>
+    ${reportsAnchor!==todayStr() ? `<button class="btn btn-outline btn-sm" id="periodTodayBtn" style="width:100%; margin-bottom:12px;">↺ الرجوع للفترة الحالية</button>` : ""}
+    ` : ""}
     <div class="stat-grid">
       <div class="stat-card"><div class="num">${fmt(totalSales)}</div><div class="lbl">إجمالي المبيعات</div></div>
       <div class="stat-card"><div class="num">${fmt(totalDiscount)}</div><div class="lbl">إجمالي الخصومات</div></div>
@@ -1687,6 +1804,8 @@ function renderReports(){
       <div class="stat-card"><div class="num">${fmt(totalReturned)}</div><div class="lbl">إجمالي الكميات المرتجعة</div></div>
       <div class="stat-card"><div class="num">${fmt(totalIncoming)}</div><div class="lbl">إجمالي الكميات الواردة</div></div>
     </div>
+    <div class="section-title">🎯 أداء المناديب (للفترة المختارة)</div>
+    <div class="card">${repPerformanceList(vouchers, returns)}</div>
     <div class="section-title">حسب المندوب</div>
     <div class="card">${barList(byRep)}</div>
     <div class="section-title">حسب التاجر</div>
@@ -1694,6 +1813,28 @@ function renderReports(){
     <div class="section-title">حسب الصنف (الأعلى مبيعًا)</div>
     <div class="card">${barList(byProduct, 8)}</div>
   `;
+}
+function repPerformanceList(vouchers, returns){
+  const map = {};
+  const touch = (name)=>{ if(!map[name]) map[name] = {vouchers:0, total:0, returns:0}; return map[name]; };
+  for(const v of vouchers){
+    if(!v.rep) continue;
+    const m = touch(v.rep);
+    m.vouchers++;
+    m.total += Number(v.total)||0;
+  }
+  for(const r of returns){
+    if(!r.rep) continue;
+    touch(r.rep).returns++;
+  }
+  const entries = Object.entries(map).sort((a,b)=>b[1].total-a[1].total);
+  if(!entries.length) return `<div class="muted">لا توجد بيانات كافية بعد</div>`;
+  return entries.map(([rep,d])=>`
+    <div class="list-item" style="margin-bottom:8px;">
+      <div class="title-line"><span>👤 ${rep}</span><span class="sum">${fmt(d.total)}</span></div>
+      <div class="meta">🧾 ${fmt(d.vouchers)} إذن صرف · ↩️ ${fmt(d.returns)} مرتجع</div>
+    </div>
+  `).join("");
 }
 function barList(obj, limit){
   let entries = Object.entries(obj).filter(([k])=>k && k!=="undefined");
@@ -1707,6 +1848,21 @@ function barList(obj, limit){
       <div class="bar-track"><div class="bar-fill" style="width:${Math.max(4,(v/max*100))}%;"></div></div>
     </div>
   `).join("");
+}
+function bindReportsEvents(){
+  document.querySelectorAll("[data-period]").forEach(c=>{
+    c.onclick = ()=>{
+      reportsPeriod = c.dataset.period;
+      reportsAnchor = todayStr();
+      renderCurrentView();
+    };
+  });
+  const prevBtn = document.getElementById("periodPrevBtn");
+  const nextBtn = document.getElementById("periodNextBtn");
+  const todayBtn = document.getElementById("periodTodayBtn");
+  if(prevBtn) prevBtn.onclick = ()=>{ reportsAnchor = shiftAnchor(reportsPeriod, reportsAnchor, -1); renderCurrentView(); };
+  if(nextBtn) nextBtn.onclick = ()=>{ reportsAnchor = shiftAnchor(reportsPeriod, reportsAnchor, 1); renderCurrentView(); };
+  if(todayBtn) todayBtn.onclick = ()=>{ reportsAnchor = todayStr(); renderCurrentView(); };
 }
 
 /* ============================================================
