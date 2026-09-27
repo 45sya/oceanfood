@@ -8,7 +8,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="أوشين فود">
 <meta name="theme-color" content="#0d6e8f">
-<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22%D8%A3%D9%88%D8%B4%D9%8A%D9%86%20%D9%81%D9%88%D8%AF%22%2C%22short_name%22%3A%22%D8%A3%D9%88%D8%B4%D9%8A%D9%86%20%D9%81%D9%88%D8%AF%22%2C%22display%22%3A%22standalone%22%2C%22start_url%22%3A%22.%22%2C%22theme_color%22%3A%22%230d6e8f%22%2C%22background_color%22%3A%22%23f4f7f9%22%7D">
+<link rel="manifest" id="manifestLink" href="data:application/manifest+json,%7B%22name%22%3A%22%D8%A3%D9%88%D8%B4%D9%8A%D9%86%20%D9%81%D9%88%D8%AF%22%2C%22short_name%22%3A%22%D8%A3%D9%88%D8%B4%D9%8A%D9%86%20%D9%81%D9%88%D8%AF%22%2C%22display%22%3A%22standalone%22%2C%22start_url%22%3A%22.%22%2C%22theme_color%22%3A%22%230d6e8f%22%2C%22background_color%22%3A%22%23f4f7f9%22%7D">
+<link rel="icon" id="faviconLink" href="">
+<link rel="apple-touch-icon" id="appleIconLink" href="">
 <title>أوشين فود - نظام المخزون</title>
 <style>
 :root{
@@ -122,10 +124,27 @@ nav.tabbar button.active{color:var(--brand);}
 
 .list-item{
   background:var(--card); border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:9px;
+  position:relative;
 }
 .list-item .title-line{display:flex; justify-content:space-between; align-items:center; font-weight:700; font-size:13.5px;}
 .list-item .meta{font-size:11.5px; color:var(--text-dim); margin-top:4px;}
 .list-item .sum{font-weight:700; color:var(--brand-dark); font-size:14px;}
+
+.list-item.has-img{
+  min-height:132px; color:#fff; background-size:cover; background-position:center;
+  display:flex; flex-direction:column; justify-content:flex-end; overflow:hidden; border-color:transparent;
+}
+.list-item.has-img::before{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(180deg, rgba(10,15,20,.05) 35%, rgba(8,12,16,.88) 100%);
+}
+.list-item.has-img > *{position:relative; z-index:1;}
+.list-item.has-img .title-line{text-shadow:0 1px 3px rgba(0,0,0,.5);}
+.list-item.has-img .meta{color:rgba(255,255,255,.88);}
+.list-item.has-img .badge-ok{background:rgba(30,158,107,.92); color:#fff;}
+.list-item.has-img .badge-low{background:rgba(224,72,62,.94); color:#fff;}
+.list-item.has-img .btn-ghost{background:rgba(255,255,255,.92); color:var(--brand-dark);}
+.list-item.has-img .btn-danger{background:rgba(255,255,255,.12); border-color:#fff; color:#fff;}
 
 .stepper{display:flex; align-items:center; gap:12px; justify-content:center; margin:10px 0;}
 .stepper button{width:42px; height:42px; border-radius:50%; border:1.5px solid var(--brand); background:var(--brand-light); color:var(--brand-dark); font-size:20px; font-weight:700;}
@@ -195,9 +214,12 @@ nav.tabbar button.active{color:var(--brand);}
 <body>
 <div id="app-root">
   <header class="topbar">
-    <div>
-      <h1>🐟 أوشين فود</h1>
-      <div class="sub">نظام إدارة المخزون والمبيعات</div>
+    <div style="display:flex; align-items:center; gap:9px;">
+      <span id="logoSlot" style="display:flex; align-items:center; justify-content:center; flex-shrink:0;">🐟</span>
+      <div>
+        <h1>أوشين فود</h1>
+        <div class="sub">نظام إدارة المخزون والمبيعات</div>
+      </div>
     </div>
     <button class="icon-btn" id="statusBtn" title="حالة الاتصال">☁️</button>
   </header>
@@ -229,12 +251,12 @@ nav.tabbar button.active{color:var(--brand);}
    لو سبتها زي ما هي، التطبيق هيشتغل بس من غير مزامنة بين الأجهزة.
 ============================================================ */
 const firebaseConfig = {
-  apiKey: "AIzaSyBXJgsZNTNCiT681WZYiEPRnaIFBrXLJj8",
-  authDomain: "oceanfood-inventory.firebaseapp.com",
-  projectId: "oceanfood-inventory",
-  storageBucket: "oceanfood-inventory.firebasestorage.app",
-  messagingSenderId: "285536676147",
-  appId: "1:285536676147:web:193cd20b403b2a2a853646"
+  apiKey: "AIzaSyBa9ZZAiju7y-O5FIyLkJi8pxBA1OuzStE",
+  authDomain: "oceanfood-inventory-baf80.firebaseapp.com",
+  projectId: "oceanfood-inventory-baf80",
+  storageBucket: "oceanfood-inventory-baf80.firebasestorage.app",
+  messagingSenderId: "789368626571",
+  appId: "1:789368626571:web:2a3109ca50f18a9099e38e"
 };
 
 /* ============================================================
@@ -318,6 +340,40 @@ const CATALOG = [
   {code:"CR-07", name:"كرواسون ميني بندق", category:"كرواسون"},
   {code:"CR-08", name:"كرواسون ميني شيكولاتة", category:"كرواسون"},
 ];
+const CATALOG_BY_CODE = {};
+CATALOG.forEach(c=>{ CATALOG_BY_CODE[c.code] = c; });
+
+/* ============================================================
+   BRANDING (شعار الموقع)
+============================================================ */
+function currentLogoUrl(){
+  const cfg = (state.settings||[]).find(s=>s.id==="config");
+  return cfg && cfg.logoUrl ? cfg.logoUrl : "";
+}
+function logoHtml(size){
+  const url = currentLogoUrl();
+  if(url) return `<img src="${url}" alt="شعار" style="width:${size}px;height:${size}px;border-radius:${Math.round(size*0.28)}px;object-fit:cover;">`;
+  return `<span style="font-size:${Math.round(size*0.78)}px; line-height:1;">🐟</span>`;
+}
+function applyBranding(){
+  const url = currentLogoUrl();
+  const logoSlot = document.getElementById("logoSlot");
+  if(logoSlot) logoSlot.innerHTML = logoHtml(32);
+  if(!url) return; // خلي أيقونة المتصفح الافتراضية زي ما هي لحد ما يتحط شعار
+  const favEl = document.getElementById("faviconLink");
+  const appleEl = document.getElementById("appleIconLink");
+  if(favEl) favEl.href = url;
+  if(appleEl) appleEl.href = url;
+  const manifestEl = document.getElementById("manifestLink");
+  if(manifestEl){
+    const manifestObj = {
+      name:"أوشين فود", short_name:"أوشين فود", display:"standalone", start_url:".",
+      theme_color:"#0d6e8f", background_color:"#f4f7f9",
+      icons:[{src:url, sizes:"192x192", type:"image/png"},{src:url, sizes:"512x512", type:"image/png"}]
+    };
+    manifestEl.href = "data:application/manifest+json," + encodeURIComponent(JSON.stringify(manifestObj));
+  }
+}
 
 function fmt(n){
   n = Number(n)||0;
@@ -542,6 +598,7 @@ document.getElementById("statusBtn").addEventListener("click", ()=>{
 
 function renderCurrentView(){
   updateTabbarActive();
+  applyBranding();
   const view = document.getElementById("view");
   const tabbarEl = document.getElementById("tabbar");
   if(state.dbAvailable === false){
@@ -582,7 +639,7 @@ function renderLogin(){
   return `
     <div class="login-wrap">
       <div class="login-card">
-        <div style="font-size:42px; text-align:center;">🐟</div>
+        <div style="text-align:center; margin-bottom:2px;">${logoHtml(56)}</div>
         <div style="text-align:center; font-weight:800; font-size:18px; margin-bottom:2px;">أوشين فود</div>
         <div class="muted" style="text-align:center; margin-bottom:18px;">سجّل الدخول للمتابعة</div>
         <div class="field"><label>اسم المستخدم</label><input type="text" id="loginUser" autocomplete="username"></div>
@@ -1391,11 +1448,12 @@ function renderInventory(){
       filtered.map(p=>{
         const stock = currentStock(p);
         const badge = stock<=LOW_STOCK_THRESHOLD ? `<span class="badge badge-low">${fmt(stock)} ${p.unit||""}</span>` : `<span class="badge badge-ok">${fmt(stock)} ${p.unit||""}</span>`;
+        const hasImg = !!p.imageUrl;
         return `
-        <div class="list-item">
+        <div class="list-item${hasImg?' has-img':''}"${hasImg?` style="background-image:url('${escapeAttr(p.imageUrl)}');"`:""}>
           <div class="title-line">
             <span style="display:flex; align-items:center; gap:8px;">
-              ${p.imageUrl ? `<img src="${p.imageUrl}" style="width:32px;height:32px;border-radius:8px;object-fit:cover;flex-shrink:0;">` : `<span>${iconForProduct(p.name)}</span>`}
+              ${hasImg ? "" : `<span>${iconForProduct(p.name)}</span>`}
               ${p.name}
             </span>
             ${badge}
@@ -1438,6 +1496,11 @@ function productFormModal(existing){
   const modalRoot = document.getElementById("modalRoot");
   const isEdit = !!existing;
   let unit = existing?existing.unit:"كجم";
+  const knownCats = Array.from(new Set([
+    ...CATALOG.map(c=>c.category),
+    ...state.products.map(p=>p.category).filter(Boolean)
+  ]));
+  const initialCategory = isEdit ? (existing.category || "") : "";
   modalRoot.innerHTML = `
     <div class="overlay" id="ovl">
       <div class="sheet">
@@ -1445,6 +1508,12 @@ function productFormModal(existing){
         <div style="font-weight:700; font-size:15px; margin-bottom:10px;">${isEdit?"تعديل صنف":"إضافة صنف جديد"}</div>
         <div class="field"><label>كود الصنف</label><input type="text" id="pCode" ${isEdit?"disabled":""} value="${isEdit?escapeAttr(existing.code):""}" placeholder="مثال: OF-011"></div>
         <div class="field"><label>اسم الصنف</label><input type="text" id="pName" value="${isEdit?escapeAttr(existing.name):""}" placeholder="مثال: جمبري كبير"></div>
+        <div class="field">
+          <label>التصنيف (Category)</label>
+          <input type="text" id="pCategory" list="catList" value="${escapeAttr(initialCategory)}" placeholder="مثال: ويفر، بسكويت، فاميلي...">
+          <datalist id="catList">${knownCats.map(c=>`<option value="${escapeAttr(c)}">`).join("")}</datalist>
+          <div class="muted" style="margin-top:4px;">التصنيف بيتسجل مع الصنف نفسه، فمش بيختفي لو حذفت الصنف وضفته تاني بنفس الكود.</div>
+        </div>
         <div class="field">
           <label>الوحدة</label>
           <div class="chip-row" id="unitChips">
@@ -1456,7 +1525,7 @@ function productFormModal(existing){
         <div class="field">
           <label>صورة الصنف (اختياري)</label>
           <input type="file" id="pImage" accept="image/*">
-          <div id="pImagePreview" style="margin-top:8px;">${isEdit && existing.imageUrl ? `<img src="${existing.imageUrl}" style="width:70px;height:70px;object-fit:cover;border-radius:10px;">` : ""}</div>
+          <div id="pImagePreview" style="margin-top:8px;">${isEdit && existing.imageUrl ? `<img src="${existing.imageUrl}" style="width:90px;height:90px;object-fit:cover;border-radius:10px;">` : ""}</div>
         </div>
         <div class="btn-row">
           <button class="btn btn-ghost" id="pCancel" style="flex:1;">إلغاء</button>
@@ -1465,15 +1534,28 @@ function productFormModal(existing){
       </div>
     </div>
   `;
+  let categoryTouched = isEdit; // في وضع الإضافة، لو المستخدم عدّل التصنيف بنفسه بلاش نستبدله بالاقتراح التلقائي
   let pendingImageUrl = isEdit ? (existing.imageUrl || "") : "";
   document.getElementById("pImage").addEventListener("change", async (e)=>{
     const f = e.target.files && e.target.files[0];
     if(!f) return;
     try{
       pendingImageUrl = await resizeImageFile(f);
-      document.getElementById("pImagePreview").innerHTML = `<img src="${pendingImageUrl}" style="width:70px;height:70px;object-fit:cover;border-radius:10px;">`;
+      document.getElementById("pImagePreview").innerHTML = `<img src="${pendingImageUrl}" style="width:90px;height:90px;object-fit:cover;border-radius:10px;">`;
     }catch(err){ console.error(err); toast("تعذر قراءة الصورة"); }
   });
+  const catInput = document.getElementById("pCategory");
+  catInput.addEventListener("input", ()=>{ categoryTouched = true; });
+  if(!isEdit){
+    document.getElementById("pCode").addEventListener("input", (e)=>{
+      const known = CATALOG_BY_CODE[e.target.value.trim()];
+      if(known && !categoryTouched){
+        catInput.value = known.category;
+        const nameEl = document.getElementById("pName");
+        if(nameEl && !nameEl.value.trim()) nameEl.value = known.name;
+      }
+    });
+  }
   document.querySelectorAll("[data-unit]").forEach(c=>{
     c.onclick = ()=>{ unit = c.dataset.unit; document.querySelectorAll("[data-unit]").forEach(x=>x.classList.toggle("selected", x.dataset.unit===unit)); };
   });
@@ -1481,14 +1563,14 @@ function productFormModal(existing){
   document.getElementById("pSave").onclick = async ()=>{
     const code = document.getElementById("pCode").value.trim();
     const name = document.getElementById("pName").value.trim();
+    const category = document.getElementById("pCategory").value.trim() || "أخرى";
     const opening = Number(document.getElementById("pOpening").value)||0;
     const price = Number(document.getElementById("pPrice").value)||0;
     if(!code||!name){ toast("أدخل الكود والاسم"); return; }
     if(!isEdit && state.products.some(p=>p.code===code)){ toast("هذا الكود مستخدم بالفعل"); return; }
-    const category = isEdit ? existing.category : "أخرى";
     try{
       await state.db.collection("products").doc(code).set({code, name, unit, opening, price, category, imageUrl: pendingImageUrl});
-      logActivity(isEdit?"تعديل صنف":"إضافة صنف", `${code} - ${name}`);
+      logActivity(isEdit?"تعديل صنف":"إضافة صنف", `${code} - ${name} (${category})`);
       toast(isEdit?"تم تعديل الصنف":"تمت إضافة الصنف");
       closeModal();
     }catch(e){ console.error(e); toast("حدث خطأ، حاول مرة أخرى"); }
@@ -1662,6 +1744,22 @@ function renderSettings(){
     }
     ${isAdmin() ? `
     <div class="row-between" style="margin:18px 0 6px;">
+      <div class="section-title" style="margin:0;">🖼️ شعار الموقع</div>
+    </div>
+    <div class="card">
+      <div class="row-between" style="align-items:flex-start;">
+        <div id="logoPreview">${currentLogoUrl() ? `<img src="${currentLogoUrl()}" style="width:64px;height:64px;object-fit:cover;border-radius:14px;">` : `<div class="muted">لا يوجد شعار مرفوع، هيتم استخدام 🐟 كشعار افتراضي.</div>`}</div>
+      </div>
+      <div class="field" style="margin-top:10px;"><label>ارفع شعار جديد</label><input type="file" id="logoFile" accept="image/*"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" id="saveLogoBtn" style="flex:1;">حفظ الشعار</button>
+        ${currentLogoUrl() ? `<button class="btn btn-danger" id="removeLogoBtn">إزالة الشعار</button>` : ""}
+      </div>
+      <div class="muted" style="margin-top:8px;">الشعار ده بيظهر في أعلى الشاشة وفي شاشة الدخول، وبيتحط تلقائيًا كأيقونة لو عملت "Add to Home Screen" بعد كده.</div>
+    </div>
+    ` : ""}
+    ${isAdmin() ? `
+    <div class="row-between" style="margin:18px 0 6px;">
       <div class="section-title" style="margin:0;">🎚️ حد الخصم بدون موافقة</div>
     </div>
     <div class="card">
@@ -1671,23 +1769,26 @@ function renderSettings(){
     ` : ""}
     ${isAdmin() ? `
     <div class="row-between" style="margin:18px 0 6px;">
-      <div class="section-title" style="margin:0;">👤 إدارة المستخدمين</div>
+      <div class="section-title" style="margin:0;">👤 إدارة المستخدمين والصلاحيات</div>
       <button class="btn btn-ghost btn-sm" id="addUserBtn">➕ إضافة يوزر</button>
     </div>
     ${state.users.map(u=>`
       <div class="list-item">
         <div class="title-line">
           <span>${u.username} <span class="badge ${u.role==='admin'?'badge-warn':'badge-ok'}">${u.role==='admin'?'أدمن':'مستخدم'}</span></span>
+        </div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button class="btn btn-ghost btn-sm" data-edit-user="${escapeAttr(u.username)}">تعديل الصلاحية / كلمة السر</button>
           ${u.username!=="administrator" ? `<button class="btn btn-danger" data-del-user="${escapeAttr(u.username)}">حذف</button>` : ""}
         </div>
       </div>
     `).join("")}
     ` : ""}
     <div class="section-title" style="margin-top:22px;">حول التطبيق</div>
-    <div class="card muted">
-      نظام إدارة مخزون ومبيعات أوشين فود. البيانات محفوظة على سيرفر سحابي مشترك، فأي جهاز (كمبيوتر أو موبايل) بيفتح نفس الرابط بيشوف نفس البيانات لحظة بلحظة — مفيش حاجة اسمها "جهاز سيرفر" لازم يفضل شغال، الاتصال بيحصل مباشرة من كل جهاز للسحابة.
-      <br><br>
-      عشان تحول الرابط لأيقونة زي التطبيقات على الموبايل: من الآيفون (Safari) دوس زرار المشاركة ثم "Add to Home Screen"، ومن أندرويد (Chrome) دوس القائمة (⋮) ثم "Add to Home Screen" أو "Install app".
+    <div class="card muted" style="text-align:center;">
+      تم إنشاء وتطوير هذا البرنامج بواسطة المبرمج عمر علي<br>
+      This app was developed by developer Omar Aly<br>
+      <span style="opacity:.7;">© 2026</span>
     </div>
   `;
 }
@@ -1700,9 +1801,39 @@ function bindSettingsEvents(){
     const v = Number(document.getElementById("maxDiscInput").value);
     if(isNaN(v) || v<0 || v>100){ toast("أدخل نسبة صحيحة بين 0 و100"); return; }
     try{
-      await state.db.collection("settings").doc("config").set({maxDiscountPct: v});
+      await state.db.collection("settings").doc("config").set({maxDiscountPct: v}, {merge:true});
       logActivity("تعديل حد الخصم", `${v}%`);
       toast("تم حفظ الحد الجديد");
+    }catch(e){ console.error(e); toast("حدث خطأ"); }
+  };
+
+  let pendingLogoUrl = null;
+  const logoFile = document.getElementById("logoFile");
+  if(logoFile) logoFile.addEventListener("change", async (e)=>{
+    const f = e.target.files && e.target.files[0];
+    if(!f) return;
+    try{
+      pendingLogoUrl = await resizeImageFile(f, 512, 0.85);
+      const prev = document.getElementById("logoPreview");
+      if(prev) prev.innerHTML = `<img src="${pendingLogoUrl}" style="width:64px;height:64px;object-fit:cover;border-radius:14px;">`;
+    }catch(err){ console.error(err); toast("تعذر قراءة الصورة"); }
+  });
+  const saveLogoBtn = document.getElementById("saveLogoBtn");
+  if(saveLogoBtn) saveLogoBtn.onclick = async ()=>{
+    if(!pendingLogoUrl){ toast("اختار صورة الشعار الأول"); return; }
+    try{
+      await state.db.collection("settings").doc("config").set({logoUrl: pendingLogoUrl}, {merge:true});
+      logActivity("تغيير شعار الموقع");
+      toast("تم حفظ الشعار الجديد");
+    }catch(e){ console.error(e); toast("حدث خطأ"); }
+  };
+  const removeLogoBtn = document.getElementById("removeLogoBtn");
+  if(removeLogoBtn) removeLogoBtn.onclick = async ()=>{
+    if(!confirm("إزالة الشعار الحالي والرجوع للأيقونة الافتراضية؟")) return;
+    try{
+      await state.db.collection("settings").doc("config").set({logoUrl: ""}, {merge:true});
+      logActivity("إزالة شعار الموقع");
+      toast("تم حذف الشعار");
     }catch(e){ console.error(e); toast("حدث خطأ"); }
   };
 
@@ -1736,6 +1867,13 @@ function bindSettingsEvents(){
   });
   const addUserBtn = document.getElementById("addUserBtn");
   if(addUserBtn) addUserBtn.onclick = addUserModal;
+  document.querySelectorAll("[data-edit-user]").forEach(b=>{
+    b.onclick = ()=>{
+      if(!isAdmin()){ toast("هذه العملية للأدمن فقط"); return; }
+      const u = state.users.find(uu=>uu.username===b.dataset.editUser);
+      if(u) editUserModal(u);
+    };
+  });
   document.querySelectorAll("[data-del-user]").forEach(b=>{
     b.onclick = async ()=>{
       if(!isAdmin()){ toast("هذه العملية للأدمن فقط"); return; }
@@ -1816,6 +1954,53 @@ function addUserModal(){
       await state.db.collection("users").doc(u).set({username:u, password:p, role, createdAt:Date.now()});
       logActivity("إضافة مستخدم", `${u} (${role})`);
       toast("تمت إضافة المستخدم");
+      closeModal();
+    }catch(e){ console.error(e); toast("حدث خطأ"); }
+  };
+  document.getElementById("ovl").addEventListener("click",(e)=>{ if(e.target.id==="ovl") closeModal(); });
+}
+
+function editUserModal(user){
+  const modalRoot = document.getElementById("modalRoot");
+  let role = user.role;
+  modalRoot.innerHTML = `
+    <div class="overlay" id="ovl">
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div style="font-weight:700; font-size:15px; margin-bottom:10px;">تعديل المستخدم: ${escapeAttr(user.username)}</div>
+        <div class="field">
+          <label>كلمة سر جديدة (اتركها فاضية لو مش عايز تغيّرها)</label>
+          <input type="text" id="euPass" placeholder="كلمة سر جديدة">
+        </div>
+        <div class="field">
+          <label>الصلاحية</label>
+          <div class="chip-row" id="roleChips">
+            <button class="chip ${role==='user'?'selected':''}" data-role="user">مستخدم عادي</button>
+            <button class="chip ${role==='admin'?'selected':''}" data-role="admin">أدمن</button>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" id="euCancel" style="flex:1;">إلغاء</button>
+          <button class="btn btn-primary" id="euSave" style="flex:1;">حفظ</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.querySelectorAll("[data-role]").forEach(c=>{
+    c.onclick = ()=>{ role = c.dataset.role; document.querySelectorAll("[data-role]").forEach(x=>x.classList.toggle("selected", x.dataset.role===role)); };
+  });
+  document.getElementById("euCancel").onclick = closeModal;
+  document.getElementById("euSave").onclick = async ()=>{
+    const newPass = document.getElementById("euPass").value;
+    if(user.username===state.currentUser.username && role!=="admin" && isAdmin()){
+      if(!confirm("أنت هتشيل صفة الأدمن عن حسابك الحالي، متأكد؟")) return;
+    }
+    try{
+      const update = {role};
+      if(newPass) update.password = newPass;
+      await state.db.collection("users").doc(user.username).set(update, {merge:true});
+      logActivity("تعديل مستخدم", `${user.username} (${role})${newPass?" + تغيير كلمة السر":""}`);
+      toast("تم حفظ التعديلات");
       closeModal();
     }catch(e){ console.error(e); toast("حدث خطأ"); }
   };
