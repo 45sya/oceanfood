@@ -215,9 +215,9 @@ nav.tabbar button.active{color:var(--brand);}
 <div id="app-root">
   <header class="topbar">
     <div style="display:flex; align-items:center; gap:9px;">
-      <span id="logoSlot" style="display:flex; align-items:center; justify-content:center; flex-shrink:0;">🐟</span>
+      <span id="logoSlot" style="display:flex; align-items:center; justify-content:center; flex-shrink:0;">🍪</span>
       <div>
-        <h1>أوشين فود</h1>
+        <h1 id="appNameText">أوشين فود</h1>
         <div class="sub">نظام إدارة المخزون والمبيعات</div>
       </div>
     </div>
@@ -384,38 +384,52 @@ function currentLogoUrl(){
   const cfg = (state.settings||[]).find(s=>s.id==="config");
   return cfg && cfg.logoUrl ? cfg.logoUrl : "";
 }
+const DEFAULT_APP_NAME = "أوشين فود";
+function currentAppName(){
+  const cfg = (state.settings||[]).find(s=>s.id==="config");
+  return cfg && cfg.appName ? cfg.appName : DEFAULT_APP_NAME;
+}
 function logoHtml(size){
   const url = currentLogoUrl();
   if(url) return `<img src="${url}" alt="شعار" style="width:${size}px;height:${size}px;border-radius:${Math.round(size*0.28)}px;object-fit:cover;">`;
-  return `<span style="font-size:${Math.round(size*0.78)}px; line-height:1;">🐟</span>`;
+  return `<span style="font-size:${Math.round(size*0.78)}px; line-height:1;">🍪</span>`;
 }
 function applyBranding(){
   const url = currentLogoUrl();
+  const name = currentAppName();
   const logoSlot = document.getElementById("logoSlot");
   if(logoSlot) logoSlot.innerHTML = logoHtml(58);
+  const nameEl = document.getElementById("appNameText");
+  if(nameEl) nameEl.textContent = name;
+  document.title = name + " - نظام المخزون";
+  const appleTitleEl = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+  if(appleTitleEl) appleTitleEl.setAttribute("content", name);
+  const manifestEl = document.getElementById("manifestLink");
+  if(manifestEl){
+    const manifestObj = {
+      name:name, short_name:name, display:"standalone", start_url:".",
+      theme_color:"#0d6e8f", background_color:"#f4f7f9"
+    };
+    if(url){ manifestObj.icons = [{src:url, sizes:"192x192", type:"image/png"},{src:url, sizes:"512x512", type:"image/png"}]; }
+    manifestEl.href = "data:application/manifest+json," + encodeURIComponent(JSON.stringify(manifestObj));
+  }
   if(!url) return; // خلي أيقونة المتصفح الافتراضية زي ما هي لحد ما يتحط شعار
   const favEl = document.getElementById("faviconLink");
   const appleEl = document.getElementById("appleIconLink");
   if(favEl) favEl.href = url;
   if(appleEl) appleEl.href = url;
-  const manifestEl = document.getElementById("manifestLink");
-  if(manifestEl){
-    const manifestObj = {
-      name:"أوشين فود", short_name:"أوشين فود", display:"standalone", start_url:".",
-      theme_color:"#0d6e8f", background_color:"#f4f7f9",
-      icons:[{src:url, sizes:"192x192", type:"image/png"},{src:url, sizes:"512x512", type:"image/png"}]
-    };
-    manifestEl.href = "data:application/manifest+json," + encodeURIComponent(JSON.stringify(manifestObj));
-  }
 }
 
 function fmt(n){
   n = Number(n)||0;
   return n.toLocaleString("en-US", {maximumFractionDigits:2});
 }
+function pad2(n){ return String(n).padStart(2,"0"); }
+/* ملاحظة مهمة: بنستخدم مكونات التاريخ المحلي (local) مش toISOString (اللي بترجع UTC)
+   علشان لو الجهاز في منطقة زمنية +2/+3 مثلاً، منتصف الليل المحلي كان بيتحول ليوم قبله
+   في UTC، وده كان بيبوظ فلتر "يومي" و"أسبوعي" في التقارير. */
 function todayStr(){
-  const d = new Date();
-  return d.toISOString().slice(0,10);
+  return dateToStr(new Date());
 }
 function uid(){
   return Math.random().toString(36).slice(2,9);
@@ -424,7 +438,9 @@ function uid(){
 /* ============================================================
    PERIOD HELPERS (للتقارير: يومي/أسبوعي/شهري/ربع سنوي/نصف سنوي/سنوي)
 ============================================================ */
-function dateToStr(d){ return d.toISOString().slice(0,10); }
+function dateToStr(d){
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+}
 function startOfWeekMon(d){
   const date = new Date(d);
   const day = date.getDay(); // 0=Sun..6=Sat
@@ -715,7 +731,7 @@ function renderLogin(){
     <div class="login-wrap">
       <div class="login-card">
         <div style="text-align:center; margin-bottom:2px;">${logoHtml(120)}</div>
-        <div style="text-align:center; font-weight:800; font-size:18px; margin-bottom:2px;">أوشين فود</div>
+        <div style="text-align:center; font-weight:800; font-size:18px; margin-bottom:2px;">${currentAppName()}</div>
         <div class="muted" style="text-align:center; margin-bottom:18px;">سجّل الدخول للمتابعة</div>
         <div class="field"><label>اسم المستخدم</label><input type="text" id="loginUser" autocomplete="username"></div>
         <div class="field"><label>كلمة السر</label><input type="password" id="loginPass" autocomplete="current-password"></div>
@@ -836,6 +852,7 @@ function renderWizard(){
   if(w.type === "voucher") return renderVoucherWizard(w);
   if(w.type === "return") return renderReturnWizard(w);
   if(w.type === "incoming") return renderIncomingWizard(w);
+  if(w.type === "incomingView") return renderIncomingViewPrint(w.inc);
   return "";
 }
 
@@ -966,7 +983,7 @@ function renderVoucherSuccess(w){
     </div>
     <div class="voucher-print" id="printArea">
       <div class="vp-head">
-        <h2>🐟 أوشين فود</h2>
+        <h2>${currentAppName()}</h2>
         <div>إذن صرف رقم ${v.number}</div>
         <div style="font-size:12px; color:#555;">${v.date}</div>
       </div>
@@ -1051,6 +1068,44 @@ function bindWizardEvents(){
   if(w.type==="incoming"){
     bindIncomingWizardEvents(w);
   }
+
+  if(w.type==="incomingView"){
+    const pb = document.getElementById("printIncomingBtn");
+    if(pb) pb.onclick = ()=>window.print();
+    const backBtn2 = document.getElementById("backIncomingViewBtn");
+    if(backBtn2) backBtn2.onclick = closeWizard;
+  }
+}
+
+function renderIncomingViewPrint(inc){
+  return `
+    <div class="row-between no-print" style="margin-bottom:10px;">
+      <button class="btn btn-ghost btn-sm" id="backIncomingViewBtn">‹ رجوع</button>
+      <div style="font-weight:700;">مراجعة الوارد</div>
+      <div style="width:60px;"></div>
+    </div>
+    <div class="voucher-print" id="printArea">
+      <div class="vp-head">
+        <h2>${currentAppName()}</h2>
+        <div>سند وارد رقم ${inc.number}</div>
+        <div style="font-size:12px; color:#555;">${inc.date||""}</div>
+      </div>
+      <div style="font-size:12.5px; margin-top:8px;">
+        ${inc.supplier? `<div><b>المورد:</b> ${inc.supplier}</div>`:""}
+        ${inc.note? `<div><b>ملاحظات:</b> ${inc.note}</div>`:""}
+      </div>
+      <table>
+        <tr><th>الصنف</th><th>الكمية</th><th>الوحدة</th></tr>
+        ${(inc.items||[]).map(it=>`<tr>
+          <td>${it.name}</td><td>${fmt(it.qty)}</td><td>${it.unit||""}</td>
+        </tr>`).join("")}
+      </table>
+      <div style="text-align:left; font-weight:800; margin-top:8px;">إجمالي الكمية: ${fmt(inc.totalQty)}</div>
+    </div>
+    <div class="sticky-bottom no-print">
+      <button class="btn btn-outline" style="width:100%;" id="printIncomingBtn">🖨️ طباعة</button>
+    </div>
+  `;
 }
 
 function openItemConfigModal(code){
@@ -1069,7 +1124,7 @@ function openItemConfigModal(code){
           <div class="section-title">الكمية</div>
           <div class="stepper">
             <button id="qtyMinus">−</button>
-            <div class="val" id="qtyVal">${cfg.qty}</div>
+            <input type="number" id="qtyVal" class="val" style="width:80px; text-align:center; border:1.5px solid var(--border); border-radius:10px; padding:6px 4px; background:var(--card); color:var(--text);" min="1" value="${cfg.qty}">
             <button id="qtyPlus">+</button>
           </div>
           ${cfg.qty > currentStock(p) ? `<div class="muted" style="color:var(--danger); text-align:center;">تنبيه: الكمية أكبر من المتاح بالمخزون</div>`:""}
@@ -1094,6 +1149,11 @@ function openItemConfigModal(code){
     `;
     document.getElementById("qtyMinus").onclick = ()=>{ cfg.qty = Math.max(1,cfg.qty-1); draw(); };
     document.getElementById("qtyPlus").onclick = ()=>{ cfg.qty += 1; draw(); };
+    document.getElementById("qtyVal").onchange = (e)=>{
+      let v = Math.round(Number(e.target.value));
+      if(isNaN(v) || v<1) v = 1;
+      cfg.qty = v; draw();
+    };
     document.querySelectorAll("[data-disc]").forEach(c=>{
       c.onclick = ()=>{ cfg.discountPct = Number(c.dataset.disc)/100; draw(); };
     });
@@ -1170,59 +1230,113 @@ async function saveVoucher(){
    WIZARD: NEW RETURN
 ============================================================ */
 function startReturnWizard(){
-  if(!state.reps.length){ toast("أضف مندوبًا واحدًا على الأقل من الإعدادات أولًا"); return; }
-  if(!state.products.length){ toast("أضف صنفًا واحدًا على الأقل من المخزون أولًا"); return; }
+  if(!state.vouchers.length){ toast("لا يوجد أذون صرف مسجلة بعد لعمل مرتجع منها"); return; }
   state.wizard = {
     type:"return", step:1,
-    rep:null, code:null, qty:1, reason:null, customReason:"", date: todayStr()
+    voucherNumber:"", voucher:null,
+    items:[], // {code,name,unit,price,qty,reason,customReason}
+    date: todayStr()
   };
   renderCurrentView();
 }
+function returnsForVoucher(voucherNumber){
+  return state.returns.filter(r=>r.voucherNumber===voucherNumber).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+}
+function findVoucherByNumber(numStr){
+  const n = String(numStr||"").trim();
+  if(!n) return null;
+  return state.vouchers.find(v=>String(v.number)===n) || null;
+}
 function renderReturnWizard(w){
   if(w.step===1){
-    return wizardHeader("مرتجع - اختر المندوب", 1, 3) + `
-      <div class="grid-btns">
-        ${state.reps.map(r=>`<button class="pick-btn ${w.rep===r.name?'selected':''}" data-rrep="${escapeAttr(r.name)}">${r.name}</button>`).join("")}
+    const recent = [...state.vouchers].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).slice(0,8);
+    return wizardHeader("مرتجع - رقم إذن الصرف", 1, 3) + `
+      <div class="muted" style="margin-bottom:8px;">اكتب رقم إذن الصرف اللي عايز تسجل مرتجع منه</div>
+      <div class="field">
+        <label>رقم الإذن</label>
+        <input type="text" id="rVoucherNo" inputmode="numeric" value="${escapeAttr(w.voucherNumber||"")}" placeholder="مثال: 1001">
       </div>
+      <button class="btn btn-outline" style="width:100%; margin-bottom:6px;" id="rFindBtn">🔎 بحث عن الإذن</button>
+      ${w.searchError? `<div class="muted" style="color:var(--danger); text-align:center; margin-bottom:8px;">${w.searchError}</div>`:""}
+      <div class="section-title">أو اختر من آخر الأذونات</div>
+      ${recent.map(v=>`
+        <div class="list-item" data-pick-voucher="${escapeAttr(v.number)}" style="cursor:pointer;">
+          <div class="title-line"><span>إذن #${v.number}</span><span class="sum">${fmt(v.total)}</span></div>
+          <div class="meta">${v.rep||""} → ${v.merchant||""} · ${v.date||""}</div>
+        </div>
+      `).join("")}
       <div class="sticky-bottom">
-        <button class="btn btn-primary" id="wizNextBtn" ${w.rep?"":"disabled"}>التالي ›</button>
+        <button class="btn btn-primary" id="wizNextBtn" ${w.voucher?"":"disabled"}>التالي ›</button>
       </div>
     `;
   }
   if(w.step===2){
-    return wizardHeader("اختر الصنف المرتجع", 2, 3) + `
-      <div class="grid-btns">
-        ${state.products.map(p=>`<button class="pick-btn ${w.code===p.code?'selected':''}" data-rcode="${escapeAttr(p.code)}">
-          ${p.imageUrl ? `<img src="${p.imageUrl}" style="width:100%;height:50px;object-fit:cover;border-radius:8px;margin-bottom:4px;">` : ""}
-          <span>${iconForProduct(p.name)} ${p.name}</span><small>الرصيد الحالي ${fmt(currentStock(p))}</small>
-        </button>`).join("")}
+    const v = w.voucher;
+    const prevReturns = returnsForVoucher(v.number);
+    return wizardHeader("اختر أصناف المرتجع", 2, 3) + `
+      <div class="card">
+        <div class="row-between"><span class="muted">رقم الإذن</span><b>#${v.number}</b></div>
+        <div class="row-between"><span class="muted">المندوب</span><b>${v.rep||""}</b></div>
+        <div class="row-between"><span class="muted">التاجر</span><b>${v.merchant||""}</b></div>
+        <div class="row-between"><span class="muted">التاريخ</span><b>${v.date||""}</b></div>
       </div>
+      <div class="section-title">أصناف هذا الإذن (اضغط للإضافة كمرتجع)</div>
+      <div class="grid-btns">
+        ${(v.items||[]).map(it=>{
+          const inCart = w.items.find(x=>x.code===it.code);
+          return `<button class="pick-btn ${inCart?'selected':''}" data-pick-return-item="${escapeAttr(it.code)}">
+            <span>${iconForProduct(it.name)} ${it.name}</span>
+            <small>مصروف ${fmt(it.qty)} ${it.unit||""}${inCart?` · مرتجع: ${fmt(inCart.qty)}`:""}</small>
+          </button>`;
+        }).join("")}
+      </div>
+      ${w.items.length? `
+        <div class="section-title">أصناف المرتجع (${w.items.length})</div>
+        ${w.items.map((it,idx)=>`
+          <div class="list-item">
+            <div class="title-line"><span>${it.name} × ${fmt(it.qty)}</span></div>
+            <div class="row-between">
+              <div class="meta">السبب: ${it.reason==="أخرى"?(it.customReason||"أخرى"):it.reason}</div>
+              <button class="btn btn-danger" data-remove-return-item="${idx}">حذف</button>
+            </div>
+          </div>
+        `).join("")}
+      `:""}
+      ${prevReturns.length? `
+        <div class="section-title">↩️ مرتجعات سابقة على هذا الإذن</div>
+        ${prevReturns.map(r=>`
+          <div class="list-item">
+            <div class="title-line"><span>${r.name} × ${fmt(r.qty)}</span><span class="muted" style="font-size:11px;">${r.date||""}</span></div>
+            <div class="meta">السبب: ${r.reason||"-"}</div>
+          </div>
+        `).join("")}
+      `:""}
       <div class="sticky-bottom">
         <div class="btn-row">
           <button class="btn btn-ghost" id="wizBackBtn">‹ رجوع</button>
-          <button class="btn btn-primary" style="flex:1;" id="wizNextBtn" ${w.code?"":"disabled"}>التالي ›</button>
+          <button class="btn btn-primary" style="flex:1;" id="wizNextBtn" ${w.items.length?"":"disabled"}>مراجعة المرتجع ›</button>
         </div>
       </div>
     `;
   }
   if(w.step===3){
-    const reasons = ["تالف","رفض العميل","زيادة عن الطلب","أخرى"];
-    return wizardHeader("الكمية والسبب", 3, 3) + `
-      <div class="section-title">الكمية المرتجعة</div>
-      <div class="stepper">
-        <button id="rQtyMinus">−</button>
-        <div class="val" id="rQtyVal">${w.qty}</div>
-        <button id="rQtyPlus">+</button>
+    return wizardHeader("مراجعة وحفظ", 3, 3) + `
+      <div class="card">
+        <div class="row-between"><span class="muted">إذن الصرف</span><b>#${w.voucher.number}</b></div>
+        <div class="row-between"><span class="muted">التاريخ</span><b>${w.date}</b></div>
+        <div class="row-between"><span class="muted">المندوب</span><b>${w.voucher.rep||""}</b></div>
       </div>
-      <div class="section-title">السبب</div>
-      <div class="chip-row">
-        ${reasons.map(r=>`<button class="chip ${w.reason===r?'selected':''}" data-reason="${escapeAttr(r)}">${r}</button>`).join("")}
-      </div>
-      ${w.reason==="أخرى" ? `<div class="field"><label>وضّح السبب</label><input type="text" id="customReasonInput" value="${escapeAttr(w.customReason||"")}"></div>` : ""}
+      <div class="section-title">الأصناف المرتجعة</div>
+      ${w.items.map(it=>`
+        <div class="list-item">
+          <div class="title-line"><span>${it.name}</span><span class="sum">${fmt(it.qty)} ${it.unit||""}</span></div>
+          <div class="meta">السبب: ${it.reason==="أخرى"?(it.customReason||"أخرى"):it.reason}</div>
+        </div>
+      `).join("")}
       <div class="sticky-bottom">
         <div class="btn-row">
-          <button class="btn btn-ghost" id="wizBackBtn">‹ رجوع</button>
-          <button class="btn btn-accent" style="flex:1;" id="saveReturnBtn" ${w.reason?"":"disabled"}>✅ حفظ المرتجع</button>
+          <button class="btn btn-ghost" id="wizBackBtn">‹ تعديل</button>
+          <button class="btn btn-accent" style="flex:1;" id="saveReturnBtn">✅ حفظ المرتجع</button>
         </div>
       </div>
     `;
@@ -1243,23 +1357,37 @@ function renderReturnWizard(w){
 }
 function bindReturnWizardEvents(w){
   if(w.step===1){
-    document.querySelectorAll("[data-rrep]").forEach(b=>{
-      b.onclick = ()=>{ w.rep = b.dataset.rrep; renderCurrentView(); };
+    const input = document.getElementById("rVoucherNo");
+    if(input) input.onchange = (e)=>{ w.voucherNumber = e.target.value.trim(); };
+    const doFind = ()=>{
+      const numVal = document.getElementById("rVoucherNo").value.trim();
+      w.voucherNumber = numVal;
+      const v = findVoucherByNumber(numVal);
+      if(!v){ w.searchError = "لم يتم العثور على إذن صرف بهذا الرقم"; w.voucher = null; }
+      else { w.searchError = null; w.voucher = v; }
+      renderCurrentView();
+    };
+    const findBtn = document.getElementById("rFindBtn");
+    if(findBtn) findBtn.onclick = doFind;
+    if(input) input.addEventListener("keydown", e=>{ if(e.key==="Enter") doFind(); });
+    document.querySelectorAll("[data-pick-voucher]").forEach(b=>{
+      b.onclick = ()=>{
+        w.voucherNumber = b.dataset.pickVoucher;
+        w.voucher = findVoucherByNumber(w.voucherNumber);
+        w.searchError = null;
+        renderCurrentView();
+      };
     });
   }
   if(w.step===2){
-    document.querySelectorAll("[data-rcode]").forEach(b=>{
-      b.onclick = ()=>{ w.code = b.dataset.rcode; renderCurrentView(); };
+    document.querySelectorAll("[data-pick-return-item]").forEach(b=>{
+      b.onclick = ()=>openReturnItemConfigModal(b.dataset.pickReturnItem);
+    });
+    document.querySelectorAll("[data-remove-return-item]").forEach(b=>{
+      b.onclick = ()=>{ w.items.splice(Number(b.dataset.removeReturnItem),1); renderCurrentView(); };
     });
   }
   if(w.step===3){
-    document.getElementById("rQtyMinus").onclick = ()=>{ w.qty = Math.max(1,w.qty-1); renderCurrentView(); };
-    document.getElementById("rQtyPlus").onclick = ()=>{ w.qty += 1; renderCurrentView(); };
-    document.querySelectorAll("[data-reason]").forEach(c=>{
-      c.onclick = ()=>{ w.reason = c.dataset.reason; renderCurrentView(); };
-    });
-    const cri = document.getElementById("customReasonInput");
-    if(cri) cri.onchange = (e)=>{ w.customReason = e.target.value; };
     const saveBtn = document.getElementById("saveReturnBtn");
     if(saveBtn) saveBtn.onclick = saveReturn;
   }
@@ -1268,24 +1396,93 @@ function bindReturnWizardEvents(w){
     if(db2) db2.onclick = closeWizard;
   }
 }
+function openReturnItemConfigModal(code){
+  const w = state.wizard;
+  const voucherItem = (w.voucher.items||[]).find(it=>it.code===code);
+  if(!voucherItem) return;
+  const existing = w.items.find(it=>it.code===code);
+  const reasons = ["تالف","رفض العميل","زيادة عن الطلب","أخرى"];
+  const cfg = {
+    qty: existing ? existing.qty : 1,
+    reason: existing ? existing.reason : null,
+    customReason: existing ? (existing.customReason||"") : ""
+  };
+  const modalRoot = document.getElementById("modalRoot");
+  function draw(){
+    modalRoot.innerHTML = `
+      <div class="overlay" id="ovl">
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div style="font-weight:700; font-size:15px; margin-bottom:4px;">${voucherItem.name}</div>
+          <div class="muted" style="margin-bottom:10px;">مصروف بالإذن: ${fmt(voucherItem.qty)} ${voucherItem.unit||""}</div>
+          <div class="section-title">الكمية المرتجعة</div>
+          <div class="stepper">
+            <button id="rItemQtyMinus">−</button>
+            <input type="number" id="rItemQtyVal" class="val" style="width:80px; text-align:center; border:1.5px solid var(--border); border-radius:10px; padding:6px 4px; background:var(--card); color:var(--text);" min="1" value="${cfg.qty}">
+            <button id="rItemQtyPlus">+</button>
+          </div>
+          ${cfg.qty > voucherItem.qty ? `<div class="muted" style="color:var(--danger); text-align:center;">تنبيه: الكمية أكبر من المصروف بالإذن</div>`:""}
+          <div class="section-title">السبب</div>
+          <div class="chip-row" id="rReasonChips">
+            ${reasons.map(r=>`<button class="chip ${cfg.reason===r?'selected':''}" data-rreason="${escapeAttr(r)}">${r}</button>`).join("")}
+          </div>
+          ${cfg.reason==="أخرى" ? `<div class="field"><label>وضّح السبب</label><input type="text" id="rCustomReason" value="${escapeAttr(cfg.customReason)}"></div>` : ""}
+          <div class="btn-row" style="margin-top:10px;">
+            <button class="btn btn-ghost" id="cancelRItemBtn" style="flex:1;">إلغاء</button>
+            <button class="btn btn-primary" id="addRItemBtn" style="flex:1;" ${cfg.reason?"":"disabled"}>${existing?"تحديث":"إضافة"}</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById("rItemQtyMinus").onclick = ()=>{ cfg.qty = Math.max(1,cfg.qty-1); draw(); };
+    document.getElementById("rItemQtyPlus").onclick = ()=>{ cfg.qty += 1; draw(); };
+    document.getElementById("rItemQtyVal").onchange = (e)=>{
+      let v = Math.round(Number(e.target.value));
+      if(isNaN(v) || v<1) v = 1;
+      cfg.qty = v; draw();
+    };
+    document.querySelectorAll("[data-rreason]").forEach(c=>{
+      c.onclick = ()=>{ cfg.reason = c.dataset.rreason; draw(); };
+    });
+    const cri = document.getElementById("rCustomReason");
+    if(cri) cri.onchange = (e)=>{ cfg.customReason = e.target.value; };
+    document.getElementById("cancelRItemBtn").onclick = closeModal;
+    document.getElementById("addRItemBtn").onclick = ()=>{
+      const line = {code:voucherItem.code, name:voucherItem.name, unit:voucherItem.unit, price:voucherItem.price, qty:cfg.qty, reason:cfg.reason, customReason:cfg.customReason};
+      if(existing){ Object.assign(existing, line); }
+      else { w.items.push(line); }
+      closeModal();
+      renderCurrentView();
+    };
+    document.getElementById("ovl").addEventListener("click", (e)=>{ if(e.target.id==="ovl") closeModal(); });
+  }
+  draw();
+}
 async function saveReturn(){
   const w = state.wizard;
-  const p = state.products.find(pp=>pp.code===w.code);
-  const reasonText = w.reason==="أخرى" ? (w.customReason||"أخرى") : w.reason;
-  const ret = {
-    number: nextReturnNo(),
-    date: w.date,
-    rep: w.rep,
-    code: w.code,
-    name: p? p.name: w.code,
-    qty: w.qty,
-    reason: reasonText,
-    createdAt: Date.now()
-  };
+  const groupId = uid();
+  const baseNo = parseInt(String(nextReturnNo()).replace("R-",""),10);
   try{
-    await state.db.collection("returns").add(ret);
+    for(let i=0;i<w.items.length;i++){
+      const it = w.items[i];
+      const reasonText = it.reason==="أخرى" ? (it.customReason||"أخرى") : it.reason;
+      const ret = {
+        number: "R-"+(baseNo+i),
+        date: w.date,
+        rep: w.voucher.rep,
+        merchant: w.voucher.merchant,
+        voucherNumber: w.voucher.number,
+        groupId,
+        code: it.code,
+        name: it.name,
+        qty: it.qty,
+        reason: reasonText,
+        createdAt: Date.now()
+      };
+      await state.db.collection("returns").add(ret);
+      logActivity("تسجيل مرتجع", `${ret.number} - ${ret.name} × ${fmt(ret.qty)} (إذن #${ret.voucherNumber})`);
+    }
     w.step = 4;
-    logActivity("تسجيل مرتجع", `${ret.number} - ${ret.name} × ${fmt(ret.qty)} (${ret.rep})`);
     toast("تم حفظ المرتجع");
     renderCurrentView();
   }catch(e){
@@ -1413,7 +1610,7 @@ function openIncomingItemModal(code){
           <div class="section-title">الكمية الواردة</div>
           <div class="stepper">
             <button id="incQtyMinus">−</button>
-            <div class="val" id="incQtyVal">${cfg.qty}</div>
+            <input type="number" id="incQtyVal" class="val" style="width:80px; text-align:center; border:1.5px solid var(--border); border-radius:10px; padding:6px 4px; background:var(--card); color:var(--text);" min="1" value="${cfg.qty}">
             <button id="incQtyPlus">+</button>
           </div>
           <div class="btn-row" style="margin-top:10px;">
@@ -1425,6 +1622,11 @@ function openIncomingItemModal(code){
     `;
     document.getElementById("incQtyMinus").onclick = ()=>{ cfg.qty = Math.max(1,cfg.qty-1); draw(); };
     document.getElementById("incQtyPlus").onclick = ()=>{ cfg.qty += 1; draw(); };
+    document.getElementById("incQtyVal").onchange = (e)=>{
+      let v = Math.round(Number(e.target.value));
+      if(isNaN(v) || v<1) v = 1;
+      cfg.qty = v; draw();
+    };
     document.getElementById("cancelIncItemBtn").onclick = closeModal;
     document.getElementById("addIncItemBtn").onclick = ()=>{
       if(existing){ existing.qty = cfg.qty; }
@@ -1480,10 +1682,10 @@ function renderIncoming(){
           <div class="meta">${inc.date||""}${inc.supplier?` · المورد: ${inc.supplier}`:""}</div>
           <div class="meta">${(inc.items||[]).map(it=>`${it.name} ×${fmt(it.qty)}`).join("، ")}</div>
           ${inc.note? `<div class="meta">ملاحظة: ${inc.note}</div>` : ""}
-          ${isAdmin() ? `
           <div class="btn-row" style="margin-top:8px;">
-            <button class="btn btn-danger" data-del-incoming="${inc.id}">حذف</button>
-          </div>` : ""}
+            <button class="btn btn-ghost btn-sm" data-view-incoming="${inc.id}">🖨️ مراجعة وطباعة</button>
+            ${isAdmin() ? `<button class="btn btn-danger" data-del-incoming="${inc.id}">حذف</button>` : ""}
+          </div>
         </div>
       `).join("")
     }
@@ -1492,6 +1694,14 @@ function renderIncoming(){
 function bindIncomingEvents(){
   const nb = document.getElementById("newIncomingBtn");
   if(nb) nb.onclick = startIncomingWizard;
+  document.querySelectorAll("[data-view-incoming]").forEach(b=>{
+    b.onclick = ()=>{
+      const inc = state.incoming.find(ii=>ii.id===b.dataset.viewIncoming);
+      if(!inc) return;
+      state.wizard = {type:"incomingView", inc};
+      renderCurrentView();
+    };
+  });
   document.querySelectorAll("[data-del-incoming]").forEach(b=>{
     b.onclick = async ()=>{
       if(!isAdmin()){ toast("هذه العملية للأدمن فقط"); return; }
@@ -1582,7 +1792,7 @@ function productFormModal(existing){
         <div class="sheet-handle"></div>
         <div style="font-weight:700; font-size:15px; margin-bottom:10px;">${isEdit?"تعديل صنف":"إضافة صنف جديد"}</div>
         <div class="field"><label>كود الصنف</label><input type="text" id="pCode" ${isEdit?"disabled":""} value="${isEdit?escapeAttr(existing.code):""}" placeholder="مثال: OF-011"></div>
-        <div class="field"><label>اسم الصنف</label><input type="text" id="pName" value="${isEdit?escapeAttr(existing.name):""}" placeholder="مثال: جمبري كبير"></div>
+        <div class="field"><label>اسم الصنف</label><input type="text" id="pName" value="${isEdit?escapeAttr(existing.name):""}" placeholder="مثال: اكس 5 فراولة"></div>
         <div class="field">
           <label>التصنيف (Category)</label>
           <input type="text" id="pCategory" list="catList" value="${escapeAttr(initialCategory)}" placeholder="مثال: ويفر، بسكويت، فاميلي...">
@@ -1659,6 +1869,19 @@ function productFormModal(existing){
 let historySub = "vouchers";
 let voucherDateFrom = "";
 let voucherDateTo = "";
+let returnDateFrom = "";
+let returnDateTo = "";
+function dayNavBar(fromVal, prevId, nextId, todayId){
+  const label = fromVal || "كل الأيام";
+  return `
+    <div class="row-between" style="margin-bottom:10px;">
+      <button class="btn btn-ghost btn-sm" id="${prevId}">‹ اليوم السابق</button>
+      <div class="muted" style="font-weight:700; font-size:12.5px;">${label}</div>
+      <button class="btn btn-ghost btn-sm" id="${nextId}">اليوم التالي ›</button>
+    </div>
+    ${fromVal!==todayStr() ? `<button class="btn btn-outline btn-sm" id="${todayId}" style="width:100%; margin-bottom:10px;">↺ الرجوع لليوم الحالي</button>` : ""}
+  `;
+}
 function renderHistory(){
   return `
     <div class="btn-row" style="margin-bottom:12px;">
@@ -1674,7 +1897,9 @@ function renderVoucherHistory(){
   if(voucherDateTo) list = list.filter(v=>v.date && v.date<=voucherDateTo);
   const filterBar = `
     <div class="card" style="margin-bottom:10px;">
-      <div class="section-title" style="margin:0 0 8px;">🔎 بحث بالتاريخ</div>
+      <div class="section-title" style="margin:0 0 8px;">📅 تصفح يوم بيوم</div>
+      ${dayNavBar(voucherDateFrom, "vDayPrev", "vDayNext", "vDayToday")}
+      <div class="section-title" style="margin:10px 0 8px;">🔎 أو بحث بفترة تاريخ</div>
       <div class="btn-row" style="margin-bottom:8px;">
         <div class="field" style="flex:1; margin-bottom:0;"><label>من تاريخ</label><input type="date" id="vDateFrom" value="${voucherDateFrom}"></div>
         <div class="field" style="flex:1; margin-bottom:0;"><label>إلى تاريخ</label><input type="date" id="vDateTo" value="${voucherDateTo}"></div>
@@ -1696,13 +1921,27 @@ function renderVoucherHistory(){
   `).join("");
 }
 function renderReturnHistory(){
-  const list = [...state.returns].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-  if(!list.length) return `<div class="empty-state"><div class="ic">↩️</div>لا توجد مرتجعات بعد</div>`;
-  return list.map(r=>`
+  let list = [...state.returns].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  if(returnDateFrom) list = list.filter(r=>r.date && r.date>=returnDateFrom);
+  if(returnDateTo) list = list.filter(r=>r.date && r.date<=returnDateTo);
+  const filterBar = `
+    <div class="card" style="margin-bottom:10px;">
+      <div class="section-title" style="margin:0 0 8px;">📅 تصفح يوم بيوم</div>
+      ${dayNavBar(returnDateFrom, "rDayPrev", "rDayNext", "rDayToday")}
+      <div class="section-title" style="margin:10px 0 8px;">🔎 أو بحث بفترة تاريخ</div>
+      <div class="btn-row" style="margin-bottom:8px;">
+        <div class="field" style="flex:1; margin-bottom:0;"><label>من تاريخ</label><input type="date" id="rDateFrom" value="${returnDateFrom}"></div>
+        <div class="field" style="flex:1; margin-bottom:0;"><label>إلى تاريخ</label><input type="date" id="rDateTo" value="${returnDateTo}"></div>
+      </div>
+      ${(returnDateFrom||returnDateTo) ? `<button class="btn btn-outline btn-sm" id="rDateClear" style="width:100%;">✖ مسح الفلتر</button>` : ""}
+    </div>
+  `;
+  if(!list.length) return filterBar + `<div class="empty-state"><div class="ic">↩️</div>لا توجد مرتجعات ${(returnDateFrom||returnDateTo)?"في الفترة دي":"بعد"}</div>`;
+  return filterBar + list.map(r=>`
     <div class="list-item">
       <div class="title-line"><span>مرتجع ${r.number}</span><span class="sum">${fmt(r.qty)}</span></div>
-      <div class="meta">${r.rep} · ${r.name} · ${r.date}</div>
-      <div class="meta">السبب: ${r.reason||"-"}</div>
+      <div class="meta">${r.rep||""} · ${r.name} · ${r.date}</div>
+      <div class="meta">${r.voucherNumber?`من إذن #${r.voucherNumber} · `:""}السبب: ${r.reason||"-"}</div>
       <div class="btn-row" style="margin-top:8px;">
         ${isAdmin() ? `<button class="btn btn-danger" data-del-return="${r.id}">حذف</button>` : ""}
       </div>
@@ -1720,6 +1959,46 @@ function bindHistoryEvents(){
   if(vTo) vTo.onchange = ()=>{ voucherDateTo = vTo.value; renderCurrentView(); };
   const vClear = document.getElementById("vDateClear");
   if(vClear) vClear.onclick = ()=>{ voucherDateFrom=""; voucherDateTo=""; renderCurrentView(); };
+  const vDayPrev = document.getElementById("vDayPrev");
+  const vDayNext = document.getElementById("vDayNext");
+  const vDayToday = document.getElementById("vDayToday");
+  if(vDayPrev) vDayPrev.onclick = ()=>{
+    const base = voucherDateFrom || todayStr();
+    const d = shiftAnchor("day", base, -1);
+    voucherDateFrom = d; voucherDateTo = d; renderCurrentView();
+  };
+  if(vDayNext) vDayNext.onclick = ()=>{
+    const base = voucherDateFrom || todayStr();
+    const d = shiftAnchor("day", base, 1);
+    voucherDateFrom = d; voucherDateTo = d; renderCurrentView();
+  };
+  if(vDayToday) vDayToday.onclick = ()=>{
+    const d = todayStr();
+    voucherDateFrom = d; voucherDateTo = d; renderCurrentView();
+  };
+  const rFrom = document.getElementById("rDateFrom");
+  const rTo = document.getElementById("rDateTo");
+  if(rFrom) rFrom.onchange = ()=>{ returnDateFrom = rFrom.value; renderCurrentView(); };
+  if(rTo) rTo.onchange = ()=>{ returnDateTo = rTo.value; renderCurrentView(); };
+  const rClear = document.getElementById("rDateClear");
+  if(rClear) rClear.onclick = ()=>{ returnDateFrom=""; returnDateTo=""; renderCurrentView(); };
+  const rDayPrev = document.getElementById("rDayPrev");
+  const rDayNext = document.getElementById("rDayNext");
+  const rDayToday = document.getElementById("rDayToday");
+  if(rDayPrev) rDayPrev.onclick = ()=>{
+    const base = returnDateFrom || todayStr();
+    const d = shiftAnchor("day", base, -1);
+    returnDateFrom = d; returnDateTo = d; renderCurrentView();
+  };
+  if(rDayNext) rDayNext.onclick = ()=>{
+    const base = returnDateFrom || todayStr();
+    const d = shiftAnchor("day", base, 1);
+    returnDateFrom = d; returnDateTo = d; renderCurrentView();
+  };
+  if(rDayToday) rDayToday.onclick = ()=>{
+    const d = todayStr();
+    returnDateFrom = d; returnDateTo = d; renderCurrentView();
+  };
   document.querySelectorAll("[data-del-voucher]").forEach(b=>{
     b.onclick = async ()=>{
       if(!isAdmin()){ toast("هذه العملية للأدمن فقط"); return; }
@@ -1900,11 +2179,18 @@ function renderSettings(){
     }
     ${isAdmin() ? `
     <div class="row-between" style="margin:18px 0 6px;">
+      <div class="section-title" style="margin:0;">🏷️ اسم الموقع / التطبيق</div>
+    </div>
+    <div class="card">
+      <div class="field" style="margin-bottom:8px;"><label>اسم الشركة اللي هيظهر في الشاشة، شاشة الدخول، والطباعة</label><input type="text" id="appNameInput" value="${escapeAttr(currentAppName())}" placeholder="مثال: أوشين فود"></div>
+      <button class="btn btn-primary btn-sm" id="saveAppNameBtn">حفظ الاسم</button>
+    </div>
+    <div class="row-between" style="margin:18px 0 6px;">
       <div class="section-title" style="margin:0;">🖼️ شعار الموقع</div>
     </div>
     <div class="card">
       <div class="row-between" style="align-items:flex-start;">
-        <div id="logoPreview">${currentLogoUrl() ? `<img src="${currentLogoUrl()}" style="width:64px;height:64px;object-fit:cover;border-radius:14px;">` : `<div class="muted">لا يوجد شعار مرفوع، هيتم استخدام 🐟 كشعار افتراضي.</div>`}</div>
+        <div id="logoPreview">${currentLogoUrl() ? `<img src="${currentLogoUrl()}" style="width:64px;height:64px;object-fit:cover;border-radius:14px;">` : `<div class="muted">لا يوجد شعار مرفوع، هيتم استخدام 🍪 كشعار افتراضي.</div>`}</div>
       </div>
       <div class="field" style="margin-top:10px;"><label>ارفع شعار جديد</label><input type="file" id="logoFile" accept="image/*"></div>
       <div class="btn-row">
@@ -1951,6 +2237,17 @@ function renderSettings(){
 function bindSettingsEvents(){
   const logoutBtn = document.getElementById("logoutBtn");
   if(logoutBtn) logoutBtn.onclick = ()=>{ if(confirm("تسجيل الخروج؟")) logout(); };
+
+  const saveAppNameBtn = document.getElementById("saveAppNameBtn");
+  if(saveAppNameBtn) saveAppNameBtn.onclick = async ()=>{
+    const v = document.getElementById("appNameInput").value.trim();
+    if(!v){ toast("اكتب اسم الموقع"); return; }
+    try{
+      await state.db.collection("settings").doc("config").set({appName: v}, {merge:true});
+      logActivity("تغيير اسم الموقع", v);
+      toast("تم حفظ اسم الموقع الجديد");
+    }catch(e){ console.error(e); toast("حدث خطأ"); }
+  };
 
   const saveMaxDiscBtn = document.getElementById("saveMaxDiscBtn");
   if(saveMaxDiscBtn) saveMaxDiscBtn.onclick = async ()=>{
@@ -2050,7 +2347,7 @@ function addMerchantModal(){
         <div class="sheet-handle"></div>
         <div style="font-weight:700; font-size:15px; margin-bottom:10px;">إضافة تاجر جديد</div>
         <div class="field"><label>اسم التاجر</label><input type="text" id="mName" placeholder="مثال: متجر طلبات"></div>
-        <div class="field"><label>الفرع (اختياري)</label><input type="text" id="mBranch" placeholder="مثال: فرع الجيزة"></div>
+        <div class="field"><label>الفرع</label><input type="text" id="mBranch" placeholder="مثال: فرع الجيزة"></div>
         <div class="btn-row">
           <button class="btn btn-ghost" id="mCancel" style="flex:1;">إلغاء</button>
           <button class="btn btn-primary" id="mSave" style="flex:1;">حفظ</button>
@@ -2063,6 +2360,7 @@ function addMerchantModal(){
     const name = document.getElementById("mName").value.trim();
     const branch = document.getElementById("mBranch").value.trim();
     if(!name){ toast("اكتب اسم التاجر"); return; }
+    if(!branch){ toast("اكتب اسم الفرع"); return; }
     try{
       await state.db.collection("merchants").add({name, branch, createdAt:Date.now()});
       logActivity("إضافة تاجر", branch ? `${name} - ${branch}` : name);
