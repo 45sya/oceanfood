@@ -232,6 +232,7 @@ nav.tabbar button.active{color:var(--brand);}
     <button data-tab="incoming"><span class="ic">📥</span>الوارد</button>
     <button data-tab="history"><span class="ic">🧾</span>السجل</button>
     <button data-tab="reports"><span class="ic">📊</span>التقارير</button>
+    <button data-tab="stocktake" id="stocktakeTabBtn"><span class="ic">📋</span>الجرد</button>
     <button data-tab="activity"><span class="ic">🕵️</span>النشاط</button>
     <button data-tab="settings"><span class="ic">⚙️</span>الإعدادات</button>
   </nav>
@@ -614,7 +615,9 @@ function dispatchedQty(code){
 function returnedQty(code){
   let total = 0;
   for(const r of state.returns){
-    if(r.code === code) total += Number(r.qty)||0;
+    for(const it of (r.items||[])){
+      if(it.code === code) total += Number(it.qty)||0;
+    }
   }
   return total;
 }
@@ -629,6 +632,10 @@ function incomingQty(code){
 }
 function currentStock(p){
   return (Number(p.opening)||0) - dispatchedQty(p.code) + returnedQty(p.code) + incomingQty(p.code);
+}
+function unitsPerCartonFor(p){
+  if(p && p.unitsPerCarton) return Number(p.unitsPerCarton)||4;
+  return (p && String(p.category||"").trim()==="سادة") ? 8 : 4;
 }
 function nextVoucherNo(){
   let max = 1000;
@@ -709,6 +716,9 @@ function renderCurrentView(){
     return;
   }
   tabbarEl.style.display = "flex";
+  const stBtn = document.getElementById("stocktakeTabBtn");
+  if(stBtn) stBtn.style.display = isAdmin() ? "" : "none";
+  if(state.tab === "stocktake" && !isAdmin()) state.tab = "home";
   if(state.wizard){
     view.innerHTML = renderWizard();
     bindWizardEvents();
@@ -720,6 +730,7 @@ function renderCurrentView(){
     case "incoming": view.innerHTML = renderIncoming(); bindIncomingEvents(); break;
     case "history": view.innerHTML = renderHistory(); bindHistoryEvents(); break;
     case "reports": view.innerHTML = renderReports(); bindReportsEvents(); break;
+    case "stocktake": view.innerHTML = renderStocktake(); bindStocktakeEvents(); break;
     case "activity": view.innerHTML = renderActivity(); break;
     case "settings": view.innerHTML = renderSettings(); bindSettingsEvents(); break;
     default: view.innerHTML = renderHome(); bindHomeEvents();
@@ -995,7 +1006,7 @@ function renderVoucherSuccess(w){
       <table>
         <tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الخصم</th><th>الإجمالي</th></tr>
         ${v.items.map(it=>`<tr>
-          <td>${it.name}</td><td>${fmt(it.qty)}</td><td>${fmt(it.price)}</td>
+          <td>${it.name}</td><td>${fmt(it.qty)}${it.packQty?` <span style="font-size:10px; color:#666;">(${fmt(it.packQty)} علبة)</span>`:""}</td><td>${fmt(it.price)}</td>
           <td>${(it.discountPct*100).toFixed(0)}%</td><td>${fmt(it.qty*it.price*(1-it.discountPct))}</td>
         </tr>`).join("")}
       </table>
@@ -1138,9 +1149,9 @@ function renderReturnViewPrint(r){
       </div>
       <table>
         <tr><th>الصنف</th><th>الكمية</th><th>السبب</th></tr>
-        <tr>
-          <td>${r.name||""}</td><td>${fmt(r.qty)}</td><td>${r.reason||"-"}</td>
-        </tr>
+        ${(r.items||[]).map(it=>`<tr>
+          <td>${it.name||""}</td><td>${fmt(it.qty)}${it.packQty?` <span style="font-size:10px; color:#666;">(${fmt(it.packQty)} علبة)</span>`:""}</td><td>${it.reason||"-"}</td>
+        </tr>`).join("")}
       </table>
       <div style="text-align:left; font-weight:800; margin-top:8px;">إجمالي الكمية المرتجعة: ${fmt(r.qty)}</div>
     </div>
@@ -1154,7 +1165,9 @@ function openItemConfigModal(code){
   const p = state.products.find(pp=>pp.code===code);
   if(!p) return;
   const w = state.wizard;
-  const cfg = {qty:1, discountPct:0};
+  const upc = unitsPerCartonFor(p);
+  const byPacks = p.unit === "كرتونة";
+  const cfg = {qty:1, discountPct:0, mode:"carton", packQty:upc};
   const modalRoot = document.getElementById("modalRoot");
   function draw(){
     modalRoot.innerHTML = `
@@ -1163,12 +1176,20 @@ function openItemConfigModal(code){
           <div class="sheet-handle"></div>
           <div style="font-weight:700; font-size:15px; margin-bottom:4px;">${p.name}</div>
           <div class="muted" style="margin-bottom:10px;">السعر: ${fmt(p.price)} / متاح: ${fmt(currentStock(p))} ${p.unit||""}</div>
-          <div class="section-title">الكمية</div>
+          ${byPacks ? `
+          <div class="section-title">وحدة الصرف</div>
+          <div class="chip-row" id="modeChips">
+            <button class="chip ${cfg.mode==='carton'?'selected':''}" data-mode="carton">بالكرتونة</button>
+            <button class="chip ${cfg.mode==='pack'?'selected':''}" data-mode="pack">بالعلب (${upc} علبة/كرتونة)</button>
+          </div>
+          `:""}
+          <div class="section-title">الكمية${cfg.mode==='pack'?" (بالعلب)":""}</div>
           <div class="stepper">
             <button id="qtyMinus">−</button>
-            <input type="number" id="qtyVal" class="val" style="width:80px; text-align:center; border:1.5px solid var(--border); border-radius:10px; padding:6px 4px; background:var(--card); color:var(--text);" min="1" value="${cfg.qty}">
+            <input type="number" id="qtyVal" class="val" style="width:80px; text-align:center; border:1.5px solid var(--border); border-radius:10px; padding:6px 4px; background:var(--card); color:var(--text);" min="1" value="${cfg.mode==='pack'?cfg.packQty:cfg.qty}">
             <button id="qtyPlus">+</button>
           </div>
+          ${cfg.mode==='pack' ? `<div class="muted" style="text-align:center;">= ${fmt(cfg.qty)} كرتونة</div>` : ""}
           ${cfg.qty > currentStock(p) ? `<div class="muted" style="color:var(--danger); text-align:center;">تنبيه: الكمية أكبر من المتاح بالمخزون</div>`:""}
           <div class="section-title">نسبة الخصم</div>
           <div class="muted" style="margin-top:-6px; margin-bottom:6px;">خصم أعلى من ${getMaxDiscount()}% هيحتاج موافقة الأدمن</div>
@@ -1189,12 +1210,32 @@ function openItemConfigModal(code){
         </div>
       </div>
     `;
-    document.getElementById("qtyMinus").onclick = ()=>{ cfg.qty = Math.max(1,cfg.qty-1); draw(); };
-    document.getElementById("qtyPlus").onclick = ()=>{ cfg.qty += 1; draw(); };
+    if(byPacks){
+      document.querySelectorAll("[data-mode]").forEach(c=>{
+        c.onclick = ()=>{
+          cfg.mode = c.dataset.mode;
+          if(cfg.mode==="pack"){ cfg.packQty = Math.max(1,Math.round(cfg.qty*upc)||upc); cfg.qty = cfg.packQty/upc; }
+          else { cfg.qty = Math.max(1,Math.round(cfg.qty)); }
+          draw();
+        };
+      });
+    }
+    document.getElementById("qtyMinus").onclick = ()=>{
+      if(cfg.mode==="pack"){ cfg.packQty = Math.max(1,cfg.packQty-1); cfg.qty = cfg.packQty/upc; }
+      else { cfg.qty = Math.max(1,cfg.qty-1); }
+      draw();
+    };
+    document.getElementById("qtyPlus").onclick = ()=>{
+      if(cfg.mode==="pack"){ cfg.packQty += 1; cfg.qty = cfg.packQty/upc; }
+      else { cfg.qty += 1; }
+      draw();
+    };
     document.getElementById("qtyVal").onchange = (e)=>{
       let v = Math.round(Number(e.target.value));
       if(isNaN(v) || v<1) v = 1;
-      cfg.qty = v; draw();
+      if(cfg.mode==="pack"){ cfg.packQty = v; cfg.qty = v/upc; }
+      else { cfg.qty = v; }
+      draw();
     };
     document.querySelectorAll("[data-disc]").forEach(c=>{
       c.onclick = ()=>{ cfg.discountPct = Number(c.dataset.disc)/100; draw(); };
@@ -1208,7 +1249,10 @@ function openItemConfigModal(code){
       const pct = cfg.discountPct*100;
       const ok = await approveHighDiscount(pct);
       if(!ok) return;
-      w.items.push({code:p.code, name:p.name, unit:p.unit, price:Number(p.price)||0, qty:cfg.qty, discountPct:cfg.discountPct});
+      w.items.push({
+        code:p.code, name:p.name, unit:p.unit, price:Number(p.price)||0, qty:cfg.qty, discountPct:cfg.discountPct,
+        packQty: cfg.mode==="pack" ? cfg.packQty : null, unitsPerCarton: cfg.mode==="pack" ? upc : null
+      });
       closeModal();
       renderCurrentView();
     };
@@ -1376,8 +1420,8 @@ function renderReturnWizard(w){
         <div class="section-title">↩️ مرتجعات سابقة على هذا الإذن</div>
         ${prevReturns.map(r=>`
           <div class="list-item">
-            <div class="title-line"><span>${r.name} × ${fmt(r.qty)}</span><span class="muted" style="font-size:11px;">${r.date||""}</span></div>
-            <div class="meta">السبب: ${r.reason||"-"}</div>
+            <div class="title-line"><span>مرتجع ${r.number}</span><span class="muted" style="font-size:11px;">${r.date||""}</span></div>
+            <div class="meta">${(r.items||[]).map(it=>`${it.name} ×${fmt(it.qty)} (${it.reason||"-"})`).join("، ")}</div>
           </div>
         `).join("")}
       `:""}
@@ -1472,10 +1516,15 @@ function openReturnItemConfigModal(code){
   if(!voucherItem) return;
   const existing = w.items.find(it=>it.code===code);
   const reasons = ["تالف","رفض العميل","زيادة عن الطلب","أخرى"];
+  const prod = state.products.find(pp=>pp.code===code) || {};
+  const upc = unitsPerCartonFor(prod);
+  const byPacks = voucherItem.unit === "كرتونة";
   const cfg = {
     qty: existing ? existing.qty : 1,
     reason: existing ? existing.reason : null,
-    customReason: existing ? (existing.customReason||"") : ""
+    customReason: existing ? (existing.customReason||"") : "",
+    mode: existing && existing.packQty ? "pack" : "carton",
+    packQty: existing && existing.packQty ? existing.packQty : upc
   };
   const modalRoot = document.getElementById("modalRoot");
   function draw(){
@@ -1485,12 +1534,20 @@ function openReturnItemConfigModal(code){
           <div class="sheet-handle"></div>
           <div style="font-weight:700; font-size:15px; margin-bottom:4px;">${voucherItem.name}</div>
           <div class="muted" style="margin-bottom:10px;">مصروف بالإذن: ${fmt(voucherItem.qty)} ${voucherItem.unit||""}</div>
-          <div class="section-title">الكمية المرتجعة</div>
+          ${byPacks ? `
+          <div class="section-title">وحدة الإرجاع</div>
+          <div class="chip-row" id="rModeChips">
+            <button class="chip ${cfg.mode==='carton'?'selected':''}" data-rmode="carton">بالكرتونة</button>
+            <button class="chip ${cfg.mode==='pack'?'selected':''}" data-rmode="pack">بالعلب (${upc} علبة/كرتونة)</button>
+          </div>
+          `:""}
+          <div class="section-title">الكمية المرتجعة${cfg.mode==='pack'?" (بالعلب)":""}</div>
           <div class="stepper">
             <button id="rItemQtyMinus">−</button>
-            <input type="number" id="rItemQtyVal" class="val" style="width:80px; text-align:center; border:1.5px solid var(--border); border-radius:10px; padding:6px 4px; background:var(--card); color:var(--text);" min="1" value="${cfg.qty}">
+            <input type="number" id="rItemQtyVal" class="val" style="width:80px; text-align:center; border:1.5px solid var(--border); border-radius:10px; padding:6px 4px; background:var(--card); color:var(--text);" min="1" value="${cfg.mode==='pack'?cfg.packQty:cfg.qty}">
             <button id="rItemQtyPlus">+</button>
           </div>
+          ${cfg.mode==='pack' ? `<div class="muted" style="text-align:center;">= ${fmt(cfg.qty)} كرتونة</div>` : ""}
           ${cfg.qty > voucherItem.qty ? `<div class="muted" style="color:var(--danger); text-align:center;">تنبيه: الكمية أكبر من المصروف بالإذن</div>`:""}
           <div class="section-title">السبب</div>
           <div class="chip-row" id="rReasonChips">
@@ -1504,12 +1561,32 @@ function openReturnItemConfigModal(code){
         </div>
       </div>
     `;
-    document.getElementById("rItemQtyMinus").onclick = ()=>{ cfg.qty = Math.max(1,cfg.qty-1); draw(); };
-    document.getElementById("rItemQtyPlus").onclick = ()=>{ cfg.qty += 1; draw(); };
+    if(byPacks){
+      document.querySelectorAll("[data-rmode]").forEach(c=>{
+        c.onclick = ()=>{
+          cfg.mode = c.dataset.rmode;
+          if(cfg.mode==="pack"){ cfg.packQty = Math.max(1,Math.round(cfg.qty*upc)||upc); cfg.qty = cfg.packQty/upc; }
+          else { cfg.qty = Math.max(1,Math.round(cfg.qty)); }
+          draw();
+        };
+      });
+    }
+    document.getElementById("rItemQtyMinus").onclick = ()=>{
+      if(cfg.mode==="pack"){ cfg.packQty = Math.max(1,cfg.packQty-1); cfg.qty = cfg.packQty/upc; }
+      else { cfg.qty = Math.max(1,cfg.qty-1); }
+      draw();
+    };
+    document.getElementById("rItemQtyPlus").onclick = ()=>{
+      if(cfg.mode==="pack"){ cfg.packQty += 1; cfg.qty = cfg.packQty/upc; }
+      else { cfg.qty += 1; }
+      draw();
+    };
     document.getElementById("rItemQtyVal").onchange = (e)=>{
       let v = Math.round(Number(e.target.value));
       if(isNaN(v) || v<1) v = 1;
-      cfg.qty = v; draw();
+      if(cfg.mode==="pack"){ cfg.packQty = v; cfg.qty = v/upc; }
+      else { cfg.qty = v; }
+      draw();
     };
     document.querySelectorAll("[data-rreason]").forEach(c=>{
       c.onclick = ()=>{ cfg.reason = c.dataset.rreason; draw(); };
@@ -1518,7 +1595,11 @@ function openReturnItemConfigModal(code){
     if(cri) cri.onchange = (e)=>{ cfg.customReason = e.target.value; };
     document.getElementById("cancelRItemBtn").onclick = closeModal;
     document.getElementById("addRItemBtn").onclick = ()=>{
-      const line = {code:voucherItem.code, name:voucherItem.name, unit:voucherItem.unit, price:voucherItem.price, qty:cfg.qty, reason:cfg.reason, customReason:cfg.customReason};
+      const line = {
+        code:voucherItem.code, name:voucherItem.name, unit:voucherItem.unit, price:voucherItem.price, qty:cfg.qty,
+        reason:cfg.reason, customReason:cfg.customReason,
+        packQty: cfg.mode==="pack" ? cfg.packQty : null, unitsPerCarton: cfg.mode==="pack" ? upc : null
+      };
       if(existing){ Object.assign(existing, line); }
       else { w.items.push(line); }
       closeModal();
@@ -1530,28 +1611,25 @@ function openReturnItemConfigModal(code){
 }
 async function saveReturn(){
   const w = state.wizard;
-  const groupId = uid();
-  const baseNo = parseInt(String(nextReturnNo()).replace("R-",""),10);
+  const items = w.items.map(it=>({
+    code: it.code, name: it.name, unit: it.unit, price: it.price, qty: it.qty,
+    reason: it.reason==="أخرى" ? (it.customReason||"أخرى") : it.reason,
+    packQty: it.packQty||null, unitsPerCarton: it.unitsPerCarton||null
+  }));
+  const totalQty = items.reduce((s,it)=>s+(Number(it.qty)||0),0);
+  const ret = {
+    number: nextReturnNo(),
+    date: w.date,
+    rep: w.voucher.rep,
+    merchant: w.voucher.merchant,
+    voucherNumber: w.voucher.number,
+    items,
+    qty: totalQty,
+    createdAt: Date.now()
+  };
   try{
-    for(let i=0;i<w.items.length;i++){
-      const it = w.items[i];
-      const reasonText = it.reason==="أخرى" ? (it.customReason||"أخرى") : it.reason;
-      const ret = {
-        number: "R-"+(baseNo+i),
-        date: w.date,
-        rep: w.voucher.rep,
-        merchant: w.voucher.merchant,
-        voucherNumber: w.voucher.number,
-        groupId,
-        code: it.code,
-        name: it.name,
-        qty: it.qty,
-        reason: reasonText,
-        createdAt: Date.now()
-      };
-      await state.db.collection("returns").add(ret);
-      logActivity("تسجيل مرتجع", `${ret.number} - ${ret.name} × ${fmt(ret.qty)} (إذن #${ret.voucherNumber})`);
-    }
+    await state.db.collection("returns").add(ret);
+    logActivity("تسجيل مرتجع", `${ret.number} - ${items.length} صنف (إذن #${ret.voucherNumber})`);
     w.step = 4;
     toast("تم حفظ المرتجع");
     renderCurrentView();
@@ -1813,7 +1891,7 @@ function renderInventory(){
             </span>
             ${badge}
           </div>
-          <div class="meta">كود: ${p.code} · سعر: ${fmt(p.price)} · وحدة: ${p.unit||"-"}${p.category?" · "+p.category:""}</div>
+          <div class="meta">كود: ${p.code} · سعر: ${fmt(p.price)} · وحدة: ${p.unit||"-"}${p.category?" · "+p.category:""}${p.unit==="كرتونة"?` · ${unitsPerCartonFor(p)} علب/كرتونة`:""}</div>
           ${isAdmin() ? `
           <div class="btn-row" style="margin-top:8px;">
             <button class="btn btn-ghost btn-sm" data-edit-product="${escapeAttr(p.code)}">تعديل</button>
@@ -1878,6 +1956,11 @@ function productFormModal(existing){
         <div class="field"><label>${isEdit?"الرصيد الافتتاحي":"الرصيد الافتتاحي (كمية أول المدة)"}</label><input type="number" id="pOpening" value="${isEdit?existing.opening:0}"></div>
         <div class="field"><label>سعر الوحدة</label><input type="number" id="pPrice" value="${isEdit?existing.price:0}"></div>
         <div class="field">
+          <label>عدد العلب في الكرتونة</label>
+          <input type="number" id="pUnitsPerCarton" min="1" value="${isEdit?(existing.unitsPerCarton||(initialCategory.trim()==='سادة'?8:4)):(initialCategory.trim()==='سادة'?8:4)}">
+          <div class="muted" style="margin-top:4px;">افتراضيًا 4 علب، والأصناف من تصنيف "سادة" تكون 8 علب في الكرتونة.</div>
+        </div>
+        <div class="field">
           <label>صورة الصنف (اختياري)</label>
           <input type="file" id="pImage" accept="image/*">
           <div id="pImagePreview" style="margin-top:8px;">${isEdit && existing.imageUrl ? `<img src="${existing.imageUrl}" style="width:90px;height:90px;object-fit:cover;border-radius:10px;">` : ""}</div>
@@ -1921,10 +2004,11 @@ function productFormModal(existing){
     const category = document.getElementById("pCategory").value.trim() || "أخرى";
     const opening = Number(document.getElementById("pOpening").value)||0;
     const price = Number(document.getElementById("pPrice").value)||0;
+    const unitsPerCarton = Number(document.getElementById("pUnitsPerCarton").value)||4;
     if(!code||!name){ toast("أدخل الكود والاسم"); return; }
     if(!isEdit && state.products.some(p=>p.code===code)){ toast("هذا الكود مستخدم بالفعل"); return; }
     try{
-      await state.db.collection("products").doc(code).set({code, name, unit, opening, price, category, imageUrl: pendingImageUrl});
+      await state.db.collection("products").doc(code).set({code, name, unit, opening, price, category, unitsPerCarton, imageUrl: pendingImageUrl});
       logActivity(isEdit?"تعديل صنف":"إضافة صنف", `${code} - ${name} (${category})`);
       toast(isEdit?"تم تعديل الصنف":"تمت إضافة الصنف");
       closeModal();
@@ -2010,9 +2094,9 @@ function renderReturnHistory(){
   return filterBar + list.map(r=>`
     <div class="list-item">
       <div class="title-line"><span>مرتجع ${r.number}</span><span class="sum">${fmt(r.qty)}</span></div>
-      <div class="meta">${r.rep||""} · ${r.name} · ${r.date}</div>
-      <div class="meta">${r.voucherNumber?`من إذن #${r.voucherNumber} · `:""}السبب: ${r.reason||"-"}</div>
-      <div class="meta">🏪 ${r.merchant||"-"}</div>
+      <div class="meta">${r.rep||""} · ${r.date}</div>
+      <div class="meta">${(r.items||[]).map(it=>`${it.name} ×${fmt(it.qty)}`).join("، ")}</div>
+      <div class="meta">${r.voucherNumber?`من إذن #${r.voucherNumber} · `:""}🏪 ${r.merchant||"-"}</div>
       <div class="btn-row" style="margin-top:8px;">
         <button class="btn btn-ghost btn-sm" data-view-return="${r.id}">🖨️ مراجعة وطباعة</button>
         ${isAdmin() ? `<button class="btn btn-danger" data-del-return="${r.id}">حذف</button>` : ""}
@@ -2136,15 +2220,23 @@ function renderReports(){
   for(const v of vouchers) byRep[v.rep] = (byRep[v.rep]||0) + (Number(v.total)||0);
   const byMerchant = {};
   for(const v of vouchers) byMerchant[v.merchant] = (byMerchant[v.merchant]||0) + (Number(v.total)||0);
-  const byProduct = {};
+  const productDetail = {}; // code -> {name, qtyOut, valueOut, qtyReturned}
   for(const v of vouchers) for(const it of (v.items||[])){
-    byProduct[it.name] = (byProduct[it.name]||0) + it.qty*it.price*(1-it.discountPct);
+    if(!productDetail[it.code]) productDetail[it.code] = {name:it.name, qtyOut:0, valueOut:0, qtyReturned:0};
+    productDetail[it.code].qtyOut += Number(it.qty)||0;
+    productDetail[it.code].valueOut += it.qty*it.price*(1-it.discountPct);
   }
+  for(const r of returns) for(const it of (r.items||[])){
+    if(!productDetail[it.code]) productDetail[it.code] = {name:it.name, qtyOut:0, valueOut:0, qtyReturned:0};
+    productDetail[it.code].qtyReturned += Number(it.qty)||0;
+  }
+  const productRows = Object.values(productDetail).sort((a,b)=>b.valueOut-a.valueOut);
 
   const periodChips = ["day","week","month","quarter","half","year","all"].map(p=>
     `<button class="chip ${reportsPeriod===p?'selected':''}" data-period="${p}">${PERIOD_LABELS[p]}</button>`
   ).join("");
   const rangeLabel = reportsPeriod==="all" ? "كل الفترات" : `${range.start} → ${range.end}`;
+  const generatedAt = new Date().toLocaleString("ar-EG");
 
   return `
     <div class="chip-row no-print" style="margin-bottom:8px;">${periodChips}</div>
@@ -2160,8 +2252,9 @@ function renderReports(){
     <div class="voucher-print" id="printArea">
       <div class="vp-head">
         <h2>${currentAppName()}</h2>
-        <div>تقرير الأداء</div>
-        <div style="font-size:12px; color:#555;">${rangeLabel}</div>
+        <div>تقرير أداء المبيعات والمخزون</div>
+        <div style="font-size:12px; color:#555;">الفترة: ${rangeLabel}</div>
+        <div class="no-print" style="font-size:11px; color:#888; margin-top:2px;">تم إصدار التقرير: ${generatedAt}${state.currentUser?` · بواسطة: ${state.currentUser.username}`:""}</div>
       </div>
       <div class="stat-grid">
         <div class="stat-card"><div class="num">${fmt(totalSales)}</div><div class="lbl">إجمالي المبيعات</div></div>
@@ -2176,8 +2269,19 @@ function renderReports(){
       <div class="card">${barList(byRep)}</div>
       <div class="section-title">حسب التاجر</div>
       <div class="card">${barList(byMerchant)}</div>
-      <div class="section-title">حسب الصنف (الأعلى مبيعًا)</div>
-      <div class="card">${barList(byProduct, 8)}</div>
+      <div class="section-title">حركة الأصناف بالتفصيل</div>
+      <table>
+        <tr><th>الصنف</th><th>مصروف</th><th>قيمة المصروف</th><th>مرتجع</th><th>صافي الكمية</th></tr>
+        ${productRows.length ? productRows.map(pr=>`
+          <tr>
+            <td style="text-align:right;">${pr.name}</td>
+            <td>${fmt(pr.qtyOut)}</td>
+            <td>${fmt(pr.valueOut)}</td>
+            <td>${fmt(pr.qtyReturned)}</td>
+            <td>${fmt(pr.qtyOut-pr.qtyReturned)}</td>
+          </tr>
+        `).join("") : `<tr><td colspan="5">لا توجد بيانات كافية بعد</td></tr>`}
+      </table>
     </div>
   `;
 }
@@ -2231,6 +2335,79 @@ function bindReportsEvents(){
   if(nextBtn) nextBtn.onclick = ()=>{ reportsAnchor = shiftAnchor(reportsPeriod, reportsAnchor, 1); renderCurrentView(); };
   if(todayBtn) todayBtn.onclick = ()=>{ reportsAnchor = todayStr(); renderCurrentView(); };
   const printBtn = document.getElementById("printReportBtn");
+  if(printBtn) printBtn.onclick = ()=>window.print();
+}
+
+/* ============================================================
+   STOCKTAKE TAB (الجرد) - للأدمن فقط
+============================================================ */
+let stocktakeCatFilter = "الكل";
+function renderStocktake(){
+  if(!isAdmin()){
+    return `<div class="empty-state"><div class="ic">🔒</div>هذا القسم للأدمن فقط</div>`;
+  }
+  const cats = ["الكل", ...Array.from(new Set(state.products.map(p=>p.category).filter(Boolean)))];
+  const filtered = stocktakeCatFilter==="الكل" ? state.products : state.products.filter(p=>p.category===stocktakeCatFilter);
+  const rows = [...filtered].sort((a,b)=>(a.name||"").localeCompare(b.name||"","ar"));
+
+  let sumOpening=0, sumIncoming=0, sumDispatched=0, sumReturned=0, sumRemaining=0;
+  const rowsHtml = rows.map(p=>{
+    const opening = Number(p.opening)||0;
+    const incoming = incomingQty(p.code);
+    const dispatched = dispatchedQty(p.code);
+    const returned = returnedQty(p.code);
+    const remaining = currentStock(p);
+    sumOpening+=opening; sumIncoming+=incoming; sumDispatched+=dispatched; sumReturned+=returned; sumRemaining+=remaining;
+    const low = remaining<=LOW_STOCK_THRESHOLD;
+    return `<tr${low?' style="color:var(--danger); font-weight:700;"':''}>
+      <td style="text-align:right;">${p.name}</td>
+      <td>${p.category||"-"}</td>
+      <td>${fmt(opening)}</td>
+      <td>${fmt(incoming)}</td>
+      <td>${fmt(dispatched)}</td>
+      <td>${fmt(returned)}</td>
+      <td>${fmt(remaining)} ${p.unit||""}</td>
+    </tr>`;
+  }).join("");
+
+  return `
+    <div class="row-between" style="margin-bottom:6px;">
+      <div class="section-title" style="margin:0;">📋 جرد المخزون</div>
+      <button class="btn btn-outline btn-sm no-print" id="printStocktakeBtn">🖨️ طباعة</button>
+    </div>
+    <div class="muted no-print" style="margin-bottom:10px;">تقرير بالأصناف المتبقية بالمخزون وما تم توريده وصرفه وإرجاعه، اعتمادًا على كل الحركات المسجلة حتى الآن.</div>
+    ${cats.length>1 ? `<div class="chip-row no-print" style="margin-bottom:10px;">
+      ${cats.map(c=>`<button class="chip ${stocktakeCatFilter===c?'selected':''}" data-stcat="${escapeAttr(c)}">${c}</button>`).join("")}
+    </div>` : ""}
+    <div class="stat-grid no-print" style="margin-bottom:10px;">
+      <div class="stat-card"><div class="num">${fmt(sumRemaining)}</div><div class="lbl">إجمالي المتبقي بالمخزون</div></div>
+      <div class="stat-card"><div class="num">${fmt(sumDispatched)}</div><div class="lbl">إجمالي المصروف</div></div>
+      <div class="stat-card"><div class="num">${fmt(sumIncoming)}</div><div class="lbl">إجمالي الوارد</div></div>
+      <div class="stat-card"><div class="num">${fmt(sumReturned)}</div><div class="lbl">إجمالي المرتجع</div></div>
+    </div>
+    <div class="voucher-print" id="printArea">
+      <div class="vp-head">
+        <h2>${currentAppName()}</h2>
+        <div>تقرير جرد المخزون</div>
+        <div style="font-size:12px; color:#555;">${todayStr()}${stocktakeCatFilter!=="الكل"?` · تصنيف: ${stocktakeCatFilter}`:""}</div>
+      </div>
+      <table>
+        <tr><th>الصنف</th><th>التصنيف</th><th>افتتاحي</th><th>وارد</th><th>مصروف</th><th>مرتجع</th><th>المتبقي</th></tr>
+        ${rowsHtml || `<tr><td colspan="7">لا توجد أصناف</td></tr>`}
+        <tr style="font-weight:800;">
+          <td colspan="2">الإجمالي</td>
+          <td>${fmt(sumOpening)}</td><td>${fmt(sumIncoming)}</td><td>${fmt(sumDispatched)}</td><td>${fmt(sumReturned)}</td><td>${fmt(sumRemaining)}</td>
+        </tr>
+      </table>
+      <div class="muted no-print" style="margin-top:10px; font-size:11px;">🔴 الصفوف الحمراء: أصناف وصلت لحد المخزون المنخفض (${LOW_STOCK_THRESHOLD} أو أقل).</div>
+    </div>
+  `;
+}
+function bindStocktakeEvents(){
+  document.querySelectorAll("[data-stcat]").forEach(c=>{
+    c.onclick = ()=>{ stocktakeCatFilter = c.dataset.stcat; renderCurrentView(); };
+  });
+  const printBtn = document.getElementById("printStocktakeBtn");
   if(printBtn) printBtn.onclick = ()=>window.print();
 }
 
